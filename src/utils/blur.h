@@ -124,7 +124,9 @@ class BlurEffect : public QGraphicsEffect
             painter_->setCompositionMode(QPainter::CompositionMode_Source);
             first_time_ = false;
         }
-        graphics_blur_effect_->setBlurHints(QGraphicsBlurEffect::PerformanceHint);
+        //graphics_blur_effect_->setBlurHints(QGraphicsBlurEffect::PerformanceHint);//用这个边缘发黑
+        graphics_blur_effect_->setBlurHints(QGraphicsBlurEffect::QualityHint);
+
         graphics_blur_effect_->setBlurRadius(radius);
         graphics_pixmap_item_->setPixmap(source_pixmap);
         graphics_scene_->render(painter_, QRectF(0, 0, source_pixmap.width(), source_pixmap.height()));

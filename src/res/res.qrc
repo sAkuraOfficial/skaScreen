@@ -2,5 +2,10 @@
     <qresource prefix="/images">
         <file>images/6k.png</file>
         <file>images/9565822.png</file>
+        <file>icons/clash.png</file>
+        <file>icons/CPU.png</file>
+        <file>icons/GPU.png</file>
+        <file>icons/RAM.png</file>
+        <file>icons/weather/cloud.png</file>
     </qresource>
 </RCC>

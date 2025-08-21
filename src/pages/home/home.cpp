@@ -6,6 +6,12 @@ home::home(QWidget *parent)
 {
     ui.setupUi(this);
 
+    // 覆盖一下ui文件设置的样式表。
+    setStyleSheet(QString::fromUtf8("#widget,#widget_2,#widget_3,#widget_4,#widget_5{\n"
+                                    "	border-radius:8;\n"
+                                    "}"
+    ));
+
     QVector<BlurEffect *> effects;
     for (int i = 0; i <= 4; i++)
     {
@@ -21,7 +27,6 @@ home::home(QWidget *parent)
     ui.widget_3->setGraphicsEffect(effects[2]);
     ui.widget_4->setGraphicsEffect(effects[3]);
     ui.widget_5->setGraphicsEffect(effects[4]);
-
 }
 
 home::~home()
@@ -35,8 +40,8 @@ void home::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
 
-     QPixmap bg(":/images/images/6k.png");
-    //QPixmap bg(":/images/images/9565822.png");
+    QPixmap bg(":/images/images/6k.png");
+    // QPixmap bg(":/images/images/9565822.png");
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true); // 开启高质量缩放
     painter.drawPixmap(rect(), bg);
 }
