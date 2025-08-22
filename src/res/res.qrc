@@ -7,5 +7,15 @@
         <file>icons/GPU.png</file>
         <file>icons/RAM.png</file>
         <file>icons/weather/cloud.png</file>
+        <file>test/tx.jpg</file>
+        <file>icons/bilibili/Lv0.png</file>
+        <file>icons/bilibili/Lv1.png</file>
+        <file>icons/bilibili/Lv2.png</file>
+        <file>icons/bilibili/Lv3.png</file>
+        <file>icons/bilibili/Lv4.png</file>
+        <file>icons/bilibili/Lv5.png</file>
+        <file>icons/bilibili/Lv6.png</file>
+        <file>test/music.jpg</file>
+        <file>images/zx.png</file>
     </qresource>
 </RCC>

@@ -30,6 +30,7 @@ set(PROJECT_SOURCES
 
     #utils
     src/utils/blur.h
+    src/utils/img.h
 
 )
 
