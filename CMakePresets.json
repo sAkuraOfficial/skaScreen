@@ -12,11 +12,33 @@
           "checksum": "wVa86FgEkvdCTVp1/nxvrkaemJc="
         }
       }
+    },
+    {
+      "name": "vs2016",
+      "displayName": "Visual Studio Community 2022 Release - amd64",
+      "description": "将编译器用于 Visual Studio 17 2022 (x64 体系结构)",
+      "generator": "Visual Studio 17 2022",
+      "toolset": "host=x64",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe"
+      }
     }
   ],
   "vendor": {
     "qt-project.org/Presets": {
-      "checksum": "67SmY24ZeVbebyKD0fGfIzb/bGI="
+      "checksum": "fX3BGr97ierh7kfTOEKVG6FX3Hk="
     }
-  }
+  },
+  "buildPresets": [
+    {
+      "name": "vs2016-debug",
+      "displayName": "Visual Studio Community 2022 Release - amd64 - Debug",
+      "configurePreset": "vs2016",
+      "configuration": "Debug"
+    }
+  ]
 }

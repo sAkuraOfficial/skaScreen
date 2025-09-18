@@ -1,0 +1,3 @@
+[submodule "3rd/tyme4cpp"]
+	path = 3rd/tyme4cpp
+	url = https://github.com/6tail/tyme4cpp.git

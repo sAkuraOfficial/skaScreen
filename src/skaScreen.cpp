@@ -8,7 +8,7 @@ skaScreen::skaScreen(QWidget *parent)
     setFixedSize(SKA_SCREEN_WIDTH, SKA_SCREEN_HEIGHT);
     this->stacked_widget = new QStackedWidget(this);
     //设置stacked_widget自动占满this
-    //this->setCentralWidget(this->stacked_widget);
+    this->setCentralWidget(this->stacked_widget);
 
     this->stacked_widget->setGeometry(0, 0, SKA_SCREEN_WIDTH, SKA_SCREEN_HEIGHT);
 
