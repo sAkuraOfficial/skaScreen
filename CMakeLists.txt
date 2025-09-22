@@ -22,6 +22,7 @@ find_package(Qt${QT_VERSION_MAJOR}
         Gui
         Widgets
         Network
+        Charts
 )
 qt_standard_project_setup()
 
@@ -62,6 +63,7 @@ target_link_libraries(${PROJECT_NAME}
         Qt::Gui
         Qt::Widgets
         Qt::Network
+        Qt::Charts
         tyme
 )
 

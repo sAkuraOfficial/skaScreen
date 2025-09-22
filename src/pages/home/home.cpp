@@ -4,31 +4,24 @@
 #include "../../utils/blur.h"
 #include "../../utils/img.h"
 #include <QLocale>
-#include <qstyleoption.h>
+#include <QToolTip>
 #include <QTimer>
+#include <qstyleoption.h>
 #include <tyme.h>
+#include<qgraphicslayout.h>
 home::home(QWidget *parent)
     : QWidget(parent)
-    , m_systemLayout(nullptr)
-    , m_cpuLabel(nullptr)
-    , m_cpuValueLabel(nullptr)
-    , m_cpuProgressBar(nullptr)
-    , m_cpuChart(nullptr)
-    , m_memoryLabel(nullptr)
-    , m_memoryValueLabel(nullptr)
-    , m_memoryProgressBar(nullptr)
-    , m_memoryChart(nullptr)
-    , m_cpuFreqLabel(nullptr)
-    , m_memoryInfoLabel(nullptr)
-    , m_connectionStatusLabel(nullptr)
+
+      ,
+      m_connectionStatusLabel(nullptr)
 {
     ui.setupUi(this);
-    
+
     // 注册自定义类型以便在信号槽中使用
     qRegisterMetaType<system_realtime_info>("system_realtime_info");
 
     // 覆盖一下ui文件设置的样式表。
-    setStyleSheet(QString::fromUtf8("#widget,#widget_2,#widget_3,#widget_4,#widget_5,#widget_system_info{\n"
+    setStyleSheet(QString::fromUtf8("#widget,#widget_2,#widget_3,#widget_4,#widget_system_info,#widget_5{\n"
                                     "	border-radius:8;\n"
                                     "background-color: rgba(222, 204, 214,160);\n"
                                     "}"));
@@ -77,18 +70,21 @@ home::home(QWidget *parent)
     connect(timer_1s, &QTimer::timeout, this, &home::updateCurrentTime_1s);
     timer_1s->start(1000); // 1秒更新一次时间
 
-    //更新粉丝数量
+    // 更新粉丝数量
     timer_1min = new QTimer(this);
     connect(timer_1min, &QTimer::timeout, this, &home::updateCurrentBilibiliFans_1min);
-    timer_1min->start(1000 * 60);//一分钟
-    updateCurrentBilibiliFans_1min();//启动的时候立刻更新一次
-    
+    timer_1min->start(1000 * 60);     // 一分钟
+    updateCurrentBilibiliFans_1min(); // 启动的时候立刻更新一次
+
     // 初始化系统监控UI和数据流
     qDebug() << "开始初始化系统监控UI...";
-    if (initSystemInfoUI()) {
+    if (initSystemInfoUI())
+    {
         qDebug() << "系统监控UI初始化成功，启动监控...";
         startSystemMonitoring();
-    } else {
+    }
+    else
+    {
         qDebug() << "Failed to initialize system monitoring UI";
     }
 }
@@ -132,10 +128,11 @@ void home::updateCurrentTime_1s()
     auto lunar_day_str = solar_day.get_lunar_day().to_string();
     // 去除前面的"农历"，精准匹配,不要使用substr
     std::string lunar_prefix = "农历";
-    if (lunar_day_str.substr(0, lunar_prefix.length()) == lunar_prefix) {
+    if (lunar_day_str.substr(0, lunar_prefix.length()) == lunar_prefix)
+    {
         lunar_day_str.erase(0, lunar_prefix.length());
     }
-    
+
     ui.label_moon_date_show->setText(QString::fromStdString(lunar_day_str));
 
     int dayOfWeek = date.dayOfWeek(); // 1=周一, 7=周日
@@ -159,297 +156,84 @@ void home::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
 
-     QPixmap bg(":/images/images/6k.png");
+    QPixmap bg(":/images/images/6k.png");
     // // QPixmap bg(":/images/images/9565822.png");
-     painter.setRenderHint(QPainter::SmoothPixmapTransform, true); // 开启高质量缩放
-     painter.drawPixmap(rect(), bg);
-}
-
-// =============================================================================
-// MiniChart 迷你图表实现
-// =============================================================================
-
-MiniChart::MiniChart(QWidget *parent)
-    : QWidget(parent)
-    , m_color(QColor(0, 120, 215))
-    , m_maxDataPoints(30)
-    , m_maxValue(0.0)
-    , m_minValue(0.0)
-{
-    setFixedSize(80, 40);
-    setAttribute(Qt::WA_OpaquePaintEvent, false);
-}
-
-void MiniChart::addDataPoint(double value)
-{
-    m_dataPoints.push_back(value);
-    
-    if (m_dataPoints.size() > m_maxDataPoints) {
-        m_dataPoints.pop_front();
-    }
-    
-    // 更新最大最小值
-    if (m_dataPoints.size() == 1) {
-        m_maxValue = m_minValue = value;
-    } else {
-        m_maxValue = std::max(m_maxValue, value);
-        m_minValue = std::min(m_minValue, value);
-    }
-    
-    update();
-}
-
-void MiniChart::setTitle(const QString &title)
-{
-    m_title = title;
-}
-
-void MiniChart::setUnit(const QString &unit)
-{
-    m_unit = unit;
-}
-
-void MiniChart::setColor(const QColor &color)
-{
-    m_color = color;
-}
-
-void MiniChart::setMaxDataPoints(int maxPoints)
-{
-    m_maxDataPoints = maxPoints;
-}
-
-void MiniChart::paintEvent(QPaintEvent *event)
-{
-    Q_UNUSED(event)
-    
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    
-    if (m_dataPoints.size() < 2) {
-        return;
-    }
-    
-    QRect chartRect = rect().adjusted(2, 2, -2, -2);
-    
-    // 绘制背景
-    painter.fillRect(chartRect, QColor(255, 255, 255, 50));
-    
-    // 计算缩放比例
-    double valueRange = m_maxValue - m_minValue;
-    if (valueRange < 0.1) valueRange = 0.1; // 避免除零
-    
-    double xStep = (double)chartRect.width() / (m_maxDataPoints - 1);
-    
-    // 绘制折线
-    QPen pen(m_color, 2);
-    painter.setPen(pen);
-    
-    QPolygonF line;
-    for (size_t i = 0; i < m_dataPoints.size(); ++i) {
-        double x = chartRect.left() + i * xStep;
-        double y = chartRect.bottom() - ((m_dataPoints[i] - m_minValue) / valueRange) * chartRect.height();
-        line << QPointF(x, y);
-    }
-    
-    if (line.size() > 1) {
-        painter.drawPolyline(line);
-        
-        // 填充渐变
-        QLinearGradient gradient(0, chartRect.top(), 0, chartRect.bottom());
-        gradient.setColorAt(0, QColor(m_color.red(), m_color.green(), m_color.blue(), 100));
-        gradient.setColorAt(1, QColor(m_color.red(), m_color.green(), m_color.blue(), 20));
-        
-        QPolygonF fillArea = line;
-        fillArea << QPointF(chartRect.right(), chartRect.bottom());
-        fillArea << QPointF(chartRect.left(), chartRect.bottom());
-        
-        QPainterPath path;
-        path.addPolygon(fillArea);
-        painter.fillPath(path, gradient);
-    }
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true); // 开启高质量缩放
+    painter.drawPixmap(rect(), bg);
 }
 
 // =============================================================================
 // 系统监控功能实现
 // =============================================================================
-
+#include <QValueAxis>
+#include <qsplineseries.h>
+#include <QCategoryAxis>
 bool home::initSystemInfoUI()
 {
-    qDebug() << "=== initSystemInfoUI 开始 ===";
+    QLayout *layout = new QHBoxLayout(ui.widget_system_info);
+    //去除所有边距
+    layout->setContentsMargins(0, 0, 0, 0);
+    // 去除所有间距
+    layout->setSpacing(0);
+    ui.widget_system_info->setLayout(layout);
     
-    // 查找widget_system_info
-    QWidget *systemInfoWidget = findChild<QWidget*>("widget_system_info");
-    if (!systemInfoWidget) {
-        qDebug() << "Error: widget_system_info not found in UI file";
-        qDebug() << "Available widgets:";
-        QList<QWidget*> widgets = findChildren<QWidget*>();
-        for (QWidget* widget : widgets) {
-            if (!widget->objectName().isEmpty()) {
-                qDebug() << "  -" << widget->objectName();
-            }
+
+
+    auto chart = new QChart;
+    chart->setTitle("");
+    chart->legend()->hide();
+    chart->setAnimationOptions(QChart::NoAnimation);
+    chart->setBackgroundVisible(false); // 不绘制chart背景，透明
+    // 设置QChartView透明，支持父widget圆角和背景色
+    m_chartView = new QChartView(ui.widget_system_info);
+    m_chartView->setChart(chart);
+    m_chartView->setStyleSheet("background: transparent;");
+    m_chartView->setAttribute(Qt::WA_TranslucentBackground);
+    m_chartView->setFrameShape(QFrame::NoFrame);
+    chart->setBackgroundRoundness(8);
+
+    m_axisX = new QCategoryAxis;
+    m_axisY = new QValueAxis;
+    // 设置X轴字体更小
+    QFont xFont = m_axisX->labelsFont();
+    xFont.setPointSize(3);
+    m_axisX->setLabelsFont(xFont);
+    // 设置Y轴字体更小，且显示数值
+    QFont yFont = m_axisY->labelsFont();
+    yFont.setPointSize(6);
+    m_axisY->setLabelsFont(yFont);
+    m_axisY->setLabelFormat("%.1f"); // 前后加空格，防止省略号
+    m_axisY->setTickCount(4); // 让Y轴有更多刻度
+    m_axisY->setLabelsAngle(0); // 水平显示
+
+    m_series = new QLineSeries;
+    QPen pen(Qt::red);
+    pen.setWidth(2);
+    m_series->setPen(pen);
+    // 抗锯齿设置
+    m_series->setUseOpenGL(false); // 关闭OpenGL，避免锯齿
+    m_chartView->setRenderHint(QPainter::Antialiasing, true);
+    // 鼠标悬浮显示数值
+    connect(m_series, &QLineSeries::hovered, this, [this](const QPointF &point, bool state) {
+        if (state) {
+            QToolTip::showText(QCursor::pos(), QString("%1").arg(point.y(), 0, 'f', 2), m_chartView);
+        } else {
+            QToolTip::hideText();
         }
-        return false;
-    }
-    
-    qDebug() << "Found widget_system_info, size:" << systemInfoWidget->size();
-    qDebug() << "widget_system_info visible:" << systemInfoWidget->isVisible();
-    qDebug() << "widget_system_info geometry:" << systemInfoWidget->geometry();
-    
-    // 创建主布局
-    m_systemLayout = new QHBoxLayout();
-    systemInfoWidget->setLayout(m_systemLayout);
-    m_systemLayout->setContentsMargins(8, 4, 8, 4);
-    m_systemLayout->setSpacing(12);
-    
-    // CPU 监控区域
-    QWidget *cpuWidget = new QWidget();
-    cpuWidget->setFixedWidth(160);
-    QVBoxLayout *cpuLayout = new QVBoxLayout(cpuWidget);
-    cpuLayout->setContentsMargins(0, 0, 0, 0);
-    cpuLayout->setSpacing(2);
-    
-    // CPU 标题和数值
-    QWidget *cpuTopWidget = new QWidget();
-    QHBoxLayout *cpuTopLayout = new QHBoxLayout(cpuTopWidget);
-    cpuTopLayout->setContentsMargins(0, 0, 0, 0);
-    cpuTopLayout->setSpacing(4);
-    
-    m_cpuLabel = new QLabel("CPU");
-    m_cpuLabel->setStyleSheet("font-weight: bold; color: #333; font-size: 12px;");
-    m_cpuValueLabel = new QLabel("0%");
-    m_cpuValueLabel->setStyleSheet("color: #0078d4; font-weight: bold; font-size: 12px;");
-    m_cpuValueLabel->setAlignment(Qt::AlignRight);
-    
-    cpuTopLayout->addWidget(m_cpuLabel);
-    cpuTopLayout->addStretch();
-    cpuTopLayout->addWidget(m_cpuValueLabel);
-    
-    // CPU 进度条
-    m_cpuProgressBar = new QProgressBar();
-    m_cpuProgressBar->setFixedHeight(6);
-    m_cpuProgressBar->setRange(0, 100);
-    m_cpuProgressBar->setTextVisible(false);
-    m_cpuProgressBar->setStyleSheet(
-        "QProgressBar {"
-        "    border: none;"
-        "    background-color: #e0e0e0;"
-        "    border-radius: 3px;"
-        "}"
-        "QProgressBar::chunk {"
-        "    background-color: #0078d4;"
-        "    border-radius: 3px;"
-        "}"
-    );
-    
-    // CPU 频率标签
-    m_cpuFreqLabel = new QLabel("0 GHz");
-    m_cpuFreqLabel->setStyleSheet("color: #666; font-size: 10px;");
-    m_cpuFreqLabel->setAlignment(Qt::AlignCenter);
-    
-    cpuLayout->addWidget(cpuTopWidget);
-    cpuLayout->addWidget(m_cpuProgressBar);
-    cpuLayout->addWidget(m_cpuFreqLabel);
-    
-    // CPU 图表
-    m_cpuChart = new MiniChart();
-    m_cpuChart->setColor(QColor(0, 120, 215));
-    m_cpuChart->setMaxDataPoints(25);
-    
-    // 内存监控区域
-    QWidget *memoryWidget = new QWidget();
-    memoryWidget->setFixedWidth(160);
-    QVBoxLayout *memoryLayout = new QVBoxLayout(memoryWidget);
-    memoryLayout->setContentsMargins(0, 0, 0, 0);
-    memoryLayout->setSpacing(2);
-    
-    // 内存标题和数值
-    QWidget *memoryTopWidget = new QWidget();
-    QHBoxLayout *memoryTopLayout = new QHBoxLayout(memoryTopWidget);
-    memoryTopLayout->setContentsMargins(0, 0, 0, 0);
-    memoryTopLayout->setSpacing(4);
-    
-    m_memoryLabel = new QLabel("内存");
-    m_memoryLabel->setStyleSheet("font-weight: bold; color: #333; font-size: 12px;");
-    m_memoryValueLabel = new QLabel("0%");
-    m_memoryValueLabel->setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 12px;");
-    m_memoryValueLabel->setAlignment(Qt::AlignRight);
-    
-    memoryTopLayout->addWidget(m_memoryLabel);
-    memoryTopLayout->addStretch();
-    memoryTopLayout->addWidget(m_memoryValueLabel);
-    
-    // 内存进度条
-    m_memoryProgressBar = new QProgressBar();
-    m_memoryProgressBar->setFixedHeight(6);
-    m_memoryProgressBar->setRange(0, 100);
-    m_memoryProgressBar->setTextVisible(false);
-    m_memoryProgressBar->setStyleSheet(
-        "QProgressBar {"
-        "    border: none;"
-        "    background-color: #e0e0e0;"
-        "    border-radius: 3px;"
-        "}"
-        "QProgressBar::chunk {"
-        "    background-color: #e74c3c;"
-        "    border-radius: 3px;"
-        "}"
-    );
-    
-    // 内存信息标签
-    m_memoryInfoLabel = new QLabel("0 GB / 0 GB");
-    m_memoryInfoLabel->setStyleSheet("color: #666; font-size: 10px;");
-    m_memoryInfoLabel->setAlignment(Qt::AlignCenter);
-    
-    memoryLayout->addWidget(memoryTopWidget);
-    memoryLayout->addWidget(m_memoryProgressBar);
-    memoryLayout->addWidget(m_memoryInfoLabel);
-    
-    // 内存图表
-    m_memoryChart = new MiniChart();
-    m_memoryChart->setColor(QColor(231, 76, 60));
-    m_memoryChart->setMaxDataPoints(25);
-    
-    // 连接状态指示器
-    m_connectionStatusLabel = new QLabel("连接中...");
-    m_connectionStatusLabel->setStyleSheet(
-        "QLabel {"
-        "    color: #f39c12;"
-        "    font-size: 10px;"
-        "    font-weight: bold;"
-        "    padding: 2px 6px;"
-        "    background-color: rgba(243, 156, 18, 30);"
-        "    border-radius: 8px;"
-        "    border: 1px solid rgba(243, 156, 18, 100);"
-        "}"
-    );
-    m_connectionStatusLabel->setAlignment(Qt::AlignCenter);
-    m_connectionStatusLabel->setFixedHeight(20);
-    
-    // 添加到主布局
-    m_systemLayout->addWidget(cpuWidget);
-    m_systemLayout->addWidget(m_cpuChart);
-    m_systemLayout->addWidget(memoryWidget);
-    m_systemLayout->addWidget(m_memoryChart);
-    m_systemLayout->addWidget(m_connectionStatusLabel);
-    m_systemLayout->addStretch();
-    
-    // 设置widget样式
-    systemInfoWidget->setStyleSheet(
-        "QWidget {"
-        "    background-color: rgba(255, 255, 255, 200);"
-        "    border-radius: 8px;"
-        "    border: 1px solid rgba(200, 200, 200, 100);"
-        "}"
-    );
-    
-    qDebug() << "System monitoring UI initialized successfully";
-    qDebug() << "Created UI components:";
-    qDebug() << "  m_cpuProgressBar:" << (void*)m_cpuProgressBar;
-    qDebug() << "  m_memoryProgressBar:" << (void*)m_memoryProgressBar;
-    qDebug() << "  m_cpuValueLabel:" << (void*)m_cpuValueLabel;
-    qDebug() << "  m_memoryValueLabel:" << (void*)m_memoryValueLabel;
-    qDebug() << "=== initSystemInfoUI 完成 ===";
+    });
+
+    chart->addSeries(m_series);
+    chart->addAxis(m_axisX, Qt::AlignBottom);
+    chart->addAxis(m_axisY, Qt::AlignLeft);
+    m_series->attachAxis(m_axisX);
+    m_series->attachAxis(m_axisY);
+    m_axisY->setRange(0, 100);
+
+    layout->addWidget(m_chartView);
+    chart->setMargins(QMargins(0, 0, 1, 0)); // 左边距加大，避免y轴被裁剪
+    chart->layout()->setContentsMargins(0, 0, 1, 0);
+    m_chartView->setContentsMargins(0, 0, 1, 0);
+    chart->legend()->hide();
     return true;
 }
 
@@ -460,25 +244,25 @@ void home::startSystemMonitoring()
         // 数据回调
         [this](system_realtime_info info) {
             // 使用Qt的信号槽机制确保在主线程中更新UI
-            QMetaObject::invokeMethod(this, "onSystemRealtimeDataReceived", 
-                                      Qt::QueuedConnection,
-                                      Q_ARG(system_realtime_info, info));
+            QMetaObject::invokeMethod(this, "onSystemRealtimeDataReceived", Qt::QueuedConnection, Q_ARG(system_realtime_info, info));
         },
         // 状态回调
         [this](QString status) {
             // 在主线程中更新状态指示器
             QMetaObject::invokeMethod(this, [this, status]() {
                 updateConnectionStatus(status);
-            }, Qt::QueuedConnection);
+            },
+                                      Qt::QueuedConnection);
         }
     );
-    
+
     qDebug() << "系统监控已启动";
 }
 
 void home::stopSystemMonitoring()
 {
-    if (system_realtime_is_stream_active()) {
+    if (system_realtime_is_stream_active())
+    {
         system_realtime_stop_stream();
         qDebug() << "系统监控已停止";
     }
@@ -487,60 +271,122 @@ void home::stopSystemMonitoring()
 void home::onSystemRealtimeDataReceived(const system_realtime_info &info)
 {
     qDebug() << "onSystemRealtimeDataReceived called";
-    
+
     // 检查UI组件是否已初始化
-    if (!m_cpuProgressBar || !m_memoryProgressBar || !m_cpuValueLabel || !m_memoryValueLabel) {
-        qDebug() << "Warning: UI components not initialized, skipping data update";
-        qDebug() << "m_cpuProgressBar:" << (void*)m_cpuProgressBar;
-        qDebug() << "m_memoryProgressBar:" << (void*)m_memoryProgressBar;
-        qDebug() << "m_cpuValueLabel:" << (void*)m_cpuValueLabel;
-        qDebug() << "m_memoryValueLabel:" << (void*)m_memoryValueLabel;
-        return;
-    }
-    
+    // if (!m_cpuProgressBar || !m_memoryProgressBar || !m_cpuValueLabel || !m_memoryValueLabel) {
+    //    qDebug() << "Warning: UI components not initialized, skipping data update";
+    //    qDebug() << "m_cpuProgressBar:" << (void*)m_cpuProgressBar;
+    //    qDebug() << "m_memoryProgressBar:" << (void*)m_memoryProgressBar;
+    //    qDebug() << "m_cpuValueLabel:" << (void*)m_cpuValueLabel;
+    //    qDebug() << "m_memoryValueLabel:" << (void*)m_memoryValueLabel;
+    //    return;
+    //}
+
     qDebug() << "UI components are valid, updating data...";
-    
+
     // 解析CPU使用率
     QString cpuUsageStr = info.cpuUsage;
     cpuUsageStr.remove('%');
     double cpuUsage = cpuUsageStr.toDouble();
-    
-    // 解析内存使用率
-    QString memoryUsageStr = info.memoryUsage;
-    memoryUsageStr.remove('%');
-    double memoryUsage = memoryUsageStr.toDouble();
-    
-    // 更新CPU信息
-    m_cpuValueLabel->setText(info.cpuUsage);
-    m_cpuProgressBar->setValue(static_cast<int>(cpuUsage));
-    m_cpuFreqLabel->setText(info.cpuFrequency);
-    if (m_cpuChart) {
-        m_cpuChart->addDataPoint(cpuUsage);
+
+
+    // 推窗动画：当前数据永远在最右边，旧数据左移
+    const int maxPoints = 600; // 显示60个点
+    QDateTime now = QDateTime::currentDateTime();
+    QString timeLabel = now.toString("hh:mm");
+    m_x += 1;
+    m_y = cpuUsage;
+    // 采样时间队列
+    static QVector<QDateTime> m_sampleTimes;
+    m_sampleTimes.append(now);
+    if (m_sampleTimes.size() > maxPoints) {
+        m_sampleTimes.remove(0, m_sampleTimes.size() - maxPoints);
     }
-    
-    // 更新内存信息
-    m_memoryValueLabel->setText(info.memoryUsage);
-    m_memoryProgressBar->setValue(static_cast<int>(memoryUsage));
-    m_memoryInfoLabel->setText(info.usedMemory + " / " + info.totalMemory);
-    if (m_memoryChart) {
-        m_memoryChart->addDataPoint(memoryUsage);
+    if (m_series) {
+        m_series->append(m_x, m_y);
+        if (m_series->count() > maxPoints) {
+            m_series->removePoints(0, m_series->count() - maxPoints);
+        }
+
+        // 在最新点上标注数值
+        if (m_chartView && m_chartView->scene() && m_series->count() > 0) {
+            // 先移除旧的标注
+            QList<QGraphicsItem*> items = m_chartView->scene()->items();
+            for (auto *item : items) {
+                auto textItem = dynamic_cast<QGraphicsSimpleTextItem*>(item);
+                if (textItem && textItem->data(0).toString() == "latestValueLabel") {
+                    m_chartView->scene()->removeItem(textItem);
+                    delete textItem;
+                }
+            }
+            // 添加新标注
+            QPointF lastPoint = m_series->points().last();
+            QPointF pos = m_chartView->chart()->mapToPosition(lastPoint, m_series);
+            auto *label = new QGraphicsSimpleTextItem(QString::number(lastPoint.y(), 'f', 2));
+            label->setData(0, "latestValueLabel");
+            QFont font = label->font();
+            font.setPointSize(10);
+            font.setBold(true);
+            label->setFont(font);
+            label->setBrush(Qt::red);
+            label->setPos(pos.x() + 4, pos.y() - 18);
+            m_chartView->scene()->addItem(label);
+        }
+        // X轴显示时间字符串（每10秒显示一个x坐标，且标签内容不会随动画移动而变化）
+        if (m_chartView && m_chartView->chart()) {
+            QCategoryAxis* newAxisX = new QCategoryAxis;
+            QFont xFont = newAxisX->labelsFont();
+            xFont.setPointSize(6);
+            newAxisX->setLabelsFont(xFont);
+            int startIdx = qMax(0, m_series->count() - maxPoints);
+            for (int i = 0; i < m_series->count(); ++i) {
+                int xVal = m_x - m_series->count() + 1 + i;
+               if (i % 50 == 0) {
+                    // 每10秒显示一个x坐标
+                    newAxisX->append(m_sampleTimes[i].toString("hh:mm:ss"), xVal);
+                }
+            }
+            newAxisX->setRange(m_x - maxPoints + 1, m_x);
+            // 替换旧X轴
+            m_chartView->chart()->removeAxis(m_axisX);
+            m_chartView->chart()->addAxis(newAxisX, Qt::AlignBottom);
+            m_series->attachAxis(newAxisX);
+            delete m_axisX;
+            m_axisX = newAxisX;
+        }
+
+        // Y轴自适应缩放
+        if (m_axisY && m_series->count() > 0) {
+            qreal minY = m_series->at(0).y();
+            qreal maxY = m_series->at(0).y();
+            for (int i = 1; i < m_series->count(); ++i) {
+                qreal y = m_series->at(i).y();
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            qreal margin = (maxY - minY) * 0.2;
+            if (margin < 2) margin = 2;
+            m_axisY->setRange(minY - margin, maxY + margin);
+        }
     }
-    
+
     qDebug() << "系统数据已更新 - CPU:" << info.cpuUsage << "内存:" << info.memoryUsage;
 }
 
 void home::updateConnectionStatus(const QString &status)
 {
-    if (!m_connectionStatusLabel) {
+    if (!m_connectionStatusLabel)
+    {
         return;
     }
-    
+
     QString displayText;
     QString styleSheet;
-    
-    if (status == "connected") {
+
+    if (status == "connected")
+    {
         displayText = "已连接";
-        styleSheet = 
+        styleSheet =
             "QLabel {"
             "    color: #27ae60;"
             "    font-size: 10px;"
@@ -550,9 +396,11 @@ void home::updateConnectionStatus(const QString &status)
             "    border-radius: 8px;"
             "    border: 1px solid rgba(39, 174, 96, 100);"
             "}";
-    } else if (status == "reconnecting") {
+    }
+    else if (status == "reconnecting")
+    {
         displayText = "重连中...";
-        styleSheet = 
+        styleSheet =
             "QLabel {"
             "    color: #f39c12;"
             "    font-size: 10px;"
@@ -562,9 +410,11 @@ void home::updateConnectionStatus(const QString &status)
             "    border-radius: 8px;"
             "    border: 1px solid rgba(243, 156, 18, 100);"
             "}";
-    } else if (status.startsWith("error:")) {
+    }
+    else if (status.startsWith("error:"))
+    {
         displayText = "连接错误";
-        styleSheet = 
+        styleSheet =
             "QLabel {"
             "    color: #e74c3c;"
             "    font-size: 10px;"
@@ -576,9 +426,11 @@ void home::updateConnectionStatus(const QString &status)
             "}";
         // 显示详细错误信息作为工具提示
         m_connectionStatusLabel->setToolTip(status.mid(7)); // 去掉"error:"前缀
-    } else if (status == "disconnected") {
+    }
+    else if (status == "disconnected")
+    {
         displayText = "已断开";
-        styleSheet = 
+        styleSheet =
             "QLabel {"
             "    color: #95a5a6;"
             "    font-size: 10px;"
@@ -588,14 +440,15 @@ void home::updateConnectionStatus(const QString &status)
             "    border-radius: 8px;"
             "    border: 1px solid rgba(149, 165, 166, 100);"
             "}";
-    } else {
+    }
+    else
+    {
         displayText = status;
         styleSheet = m_connectionStatusLabel->styleSheet(); // 保持当前样式
     }
-    
+
     m_connectionStatusLabel->setText(displayText);
     m_connectionStatusLabel->setStyleSheet(styleSheet);
-    
+
     qDebug() << "Connection status updated:" << status << "→" << displayText;
 }
-
