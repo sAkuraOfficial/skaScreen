@@ -16,6 +16,8 @@
 #include <QChart>
 #include <QChartView>
 #include <QLineSeries>
+
+#include "SystemChartWidget.h"
 // 声明元类型
 Q_DECLARE_METATYPE(system_realtime_info)
 QT_FORWARD_DECLARE_CLASS(QSplineSeries)
@@ -39,15 +41,9 @@ class home : public QWidget
     // 系统监控相关
     QLabel *m_connectionStatusLabel; // 连接状态指示器
 
-    QChartView *m_chartView = nullptr;
-    QLineSeries *m_series = nullptr;
-    QCategoryAxis *m_axisX = nullptr;
-    QValueAxis *m_axisY = nullptr;
-    QTimer m_timer;
-    QStringList m_titles;
-    qreal m_step = 0.;
-    qreal m_x = 5;
-    qreal m_y = 1;
+    // 新增：CPU占用和CPU频率图表
+    SystemChartWidget* m_cpuUsageChart = nullptr;
+    SystemChartWidget* m_cpuFreqChart = nullptr;
 
   private slots:
     void updateCurrentWeather_30min();

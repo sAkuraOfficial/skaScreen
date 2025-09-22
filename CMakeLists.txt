@@ -33,6 +33,8 @@ set(PROJECT_SOURCES
     src/pages/home/home.cpp
     src/pages/home/home.h
     src/pages/home/home.ui
+    src/pages/home/SystemChartWidget.cpp
+    src/pages/home/SystemChartWidget.h
 
     #core
     src/setting.h

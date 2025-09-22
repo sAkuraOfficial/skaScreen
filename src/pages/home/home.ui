@@ -377,45 +377,41 @@ border-radius:8px;
     <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
       <widget class="QWidget" name="widget_4" native="true">
-       <widget class="QLabel" name="label_11">
+       <widget class="QWidget" name="">
         <property name="geometry">
          <rect>
-          <x>24</x>
-          <y>9</y>
-          <width>191</width>
-          <height>45</height>
+          <x>60</x>
+          <y>10</y>
+          <width>171</width>
+          <height>26</height>
          </rect>
         </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="font">
-         <font>
-          <pointsize>9</pointsize>
-          <bold>true</bold>
-          <kerning>true</kerning>
-         </font>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">color:white;</string>
-        </property>
-        <property name="text">
-         <string>&lt;html&gt;
-&lt;head/&gt;
-&lt;body style=&quot;line-height:1;&quot;&gt;
-  &lt;span&gt;CPU: &lt;span style=&quot;color:#00ff00;&quot;&gt;25%&lt;/span&gt; 47°C 3.42GHz 25W&lt;/span&gt;&lt;br&gt;
-  &lt;span&gt;GPU: &lt;span style=&quot;color:#ff0000;&quot;&gt;78%&lt;/span&gt; 66°C 120W&lt;/span&gt;&lt;br&gt;
-  &lt;span&gt;MEM: 33% 13410/39878&lt;/span&gt;
-&lt;/body&gt;
-&lt;/html&gt;
-</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
-        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_3">
+         <property name="spacing">
+          <number>2</number>
+         </property>
+         <item>
+          <widget class="QPushButton" name="pushButton_6">
+           <property name="text">
+            <string>规则</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_4">
+           <property name="text">
+            <string>全局</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_5">
+           <property name="text">
+            <string>直连</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </widget>
      </item>

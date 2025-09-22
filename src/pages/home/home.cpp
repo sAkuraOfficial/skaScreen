@@ -170,70 +170,23 @@ void home::paintEvent(QPaintEvent *event)
 #include <QCategoryAxis>
 bool home::initSystemInfoUI()
 {
-    QLayout *layout = new QHBoxLayout(ui.widget_system_info);
-    //去除所有边距
+    QHBoxLayout *layout = new QHBoxLayout(ui.widget_system_info);
     layout->setContentsMargins(0, 0, 0, 0);
-    // 去除所有间距
     layout->setSpacing(0);
     ui.widget_system_info->setLayout(layout);
-    
 
+    m_cpuUsageChart = new SystemChartWidget("CPU占用", "%", ui.widget_system_info);
+    m_cpuUsageChart->setYAxisRange(0, 100);
+    m_cpuUsageChart->setXAxisLabelInterval(240); // 每10秒显示一个x坐标
+    m_cpuUsageChart->setMaxPoints(60);
+    layout->addWidget(m_cpuUsageChart, 1);
 
-    auto chart = new QChart;
-    chart->setTitle("");
-    chart->legend()->hide();
-    chart->setAnimationOptions(QChart::NoAnimation);
-    chart->setBackgroundVisible(false); // 不绘制chart背景，透明
-    // 设置QChartView透明，支持父widget圆角和背景色
-    m_chartView = new QChartView(ui.widget_system_info);
-    m_chartView->setChart(chart);
-    m_chartView->setStyleSheet("background: transparent;");
-    m_chartView->setAttribute(Qt::WA_TranslucentBackground);
-    m_chartView->setFrameShape(QFrame::NoFrame);
-    chart->setBackgroundRoundness(8);
+    m_cpuFreqChart = new SystemChartWidget("CPU频率", "GHz", ui.widget_system_info);
+    m_cpuFreqChart->setYAxisRange(1, 2); // 假设最大4GHz
+    m_cpuFreqChart->setXAxisLabelInterval(240);
+    m_cpuFreqChart->setMaxPoints(60);
+    layout->addWidget(m_cpuFreqChart, 1);
 
-    m_axisX = new QCategoryAxis;
-    m_axisY = new QValueAxis;
-    // 设置X轴字体更小
-    QFont xFont = m_axisX->labelsFont();
-    xFont.setPointSize(3);
-    m_axisX->setLabelsFont(xFont);
-    // 设置Y轴字体更小，且显示数值
-    QFont yFont = m_axisY->labelsFont();
-    yFont.setPointSize(6);
-    m_axisY->setLabelsFont(yFont);
-    m_axisY->setLabelFormat("%.1f"); // 前后加空格，防止省略号
-    m_axisY->setTickCount(4); // 让Y轴有更多刻度
-    m_axisY->setLabelsAngle(0); // 水平显示
-
-    m_series = new QLineSeries;
-    QPen pen(Qt::red);
-    pen.setWidth(2);
-    m_series->setPen(pen);
-    // 抗锯齿设置
-    m_series->setUseOpenGL(false); // 关闭OpenGL，避免锯齿
-    m_chartView->setRenderHint(QPainter::Antialiasing, true);
-    // 鼠标悬浮显示数值
-    connect(m_series, &QLineSeries::hovered, this, [this](const QPointF &point, bool state) {
-        if (state) {
-            QToolTip::showText(QCursor::pos(), QString("%1").arg(point.y(), 0, 'f', 2), m_chartView);
-        } else {
-            QToolTip::hideText();
-        }
-    });
-
-    chart->addSeries(m_series);
-    chart->addAxis(m_axisX, Qt::AlignBottom);
-    chart->addAxis(m_axisY, Qt::AlignLeft);
-    m_series->attachAxis(m_axisX);
-    m_series->attachAxis(m_axisY);
-    m_axisY->setRange(0, 100);
-
-    layout->addWidget(m_chartView);
-    chart->setMargins(QMargins(0, 0, 1, 0)); // 左边距加大，避免y轴被裁剪
-    chart->layout()->setContentsMargins(0, 0, 1, 0);
-    m_chartView->setContentsMargins(0, 0, 1, 0);
-    chart->legend()->hide();
     return true;
 }
 
@@ -289,88 +242,25 @@ void home::onSystemRealtimeDataReceived(const system_realtime_info &info)
     cpuUsageStr.remove('%');
     double cpuUsage = cpuUsageStr.toDouble();
 
+    // 解析CPU频率（如 "1.81 GHz"）
+    double cpuFreq = 0.0;
+    QString cpuFreqStr = info.cpuFrequency;
+    if (!cpuFreqStr.isEmpty()) {
+        QString freqNum = cpuFreqStr;
+        freqNum.remove("GHz");
+        freqNum.remove(" ");
+        cpuFreq = freqNum.toDouble();
+    }
 
-    // 推窗动画：当前数据永远在最右边，旧数据左移
-    const int maxPoints = 600; // 显示60个点
     QDateTime now = QDateTime::currentDateTime();
-    QString timeLabel = now.toString("hh:mm");
-    m_x += 1;
-    m_y = cpuUsage;
-    // 采样时间队列
-    static QVector<QDateTime> m_sampleTimes;
-    m_sampleTimes.append(now);
-    if (m_sampleTimes.size() > maxPoints) {
-        m_sampleTimes.remove(0, m_sampleTimes.size() - maxPoints);
+    if (m_cpuUsageChart) {
+        m_cpuUsageChart->appendDataPoint(cpuUsage, now);
     }
-    if (m_series) {
-        m_series->append(m_x, m_y);
-        if (m_series->count() > maxPoints) {
-            m_series->removePoints(0, m_series->count() - maxPoints);
-        }
-
-        // 在最新点上标注数值
-        if (m_chartView && m_chartView->scene() && m_series->count() > 0) {
-            // 先移除旧的标注
-            QList<QGraphicsItem*> items = m_chartView->scene()->items();
-            for (auto *item : items) {
-                auto textItem = dynamic_cast<QGraphicsSimpleTextItem*>(item);
-                if (textItem && textItem->data(0).toString() == "latestValueLabel") {
-                    m_chartView->scene()->removeItem(textItem);
-                    delete textItem;
-                }
-            }
-            // 添加新标注
-            QPointF lastPoint = m_series->points().last();
-            QPointF pos = m_chartView->chart()->mapToPosition(lastPoint, m_series);
-            auto *label = new QGraphicsSimpleTextItem(QString::number(lastPoint.y(), 'f', 2));
-            label->setData(0, "latestValueLabel");
-            QFont font = label->font();
-            font.setPointSize(10);
-            font.setBold(true);
-            label->setFont(font);
-            label->setBrush(Qt::red);
-            label->setPos(pos.x() + 4, pos.y() - 18);
-            m_chartView->scene()->addItem(label);
-        }
-        // X轴显示时间字符串（每10秒显示一个x坐标，且标签内容不会随动画移动而变化）
-        if (m_chartView && m_chartView->chart()) {
-            QCategoryAxis* newAxisX = new QCategoryAxis;
-            QFont xFont = newAxisX->labelsFont();
-            xFont.setPointSize(6);
-            newAxisX->setLabelsFont(xFont);
-            int startIdx = qMax(0, m_series->count() - maxPoints);
-            for (int i = 0; i < m_series->count(); ++i) {
-                int xVal = m_x - m_series->count() + 1 + i;
-               if (i % 50 == 0) {
-                    // 每10秒显示一个x坐标
-                    newAxisX->append(m_sampleTimes[i].toString("hh:mm:ss"), xVal);
-                }
-            }
-            newAxisX->setRange(m_x - maxPoints + 1, m_x);
-            // 替换旧X轴
-            m_chartView->chart()->removeAxis(m_axisX);
-            m_chartView->chart()->addAxis(newAxisX, Qt::AlignBottom);
-            m_series->attachAxis(newAxisX);
-            delete m_axisX;
-            m_axisX = newAxisX;
-        }
-
-        // Y轴自适应缩放
-        if (m_axisY && m_series->count() > 0) {
-            qreal minY = m_series->at(0).y();
-            qreal maxY = m_series->at(0).y();
-            for (int i = 1; i < m_series->count(); ++i) {
-                qreal y = m_series->at(i).y();
-                if (y < minY) minY = y;
-                if (y > maxY) maxY = y;
-            }
-            qreal margin = (maxY - minY) * 0.2;
-            if (margin < 2) margin = 2;
-            m_axisY->setRange(minY - margin, maxY + margin);
-        }
+    if (m_cpuFreqChart) {
+        m_cpuFreqChart->appendDataPoint(cpuFreq, now);
     }
 
-    qDebug() << "系统数据已更新 - CPU:" << info.cpuUsage << "内存:" << info.memoryUsage;
+    qDebug() << "系统数据已更新 - CPU:" << info.cpuUsage << "频率:" << info.cpuFrequency << "内存:" << info.memoryUsage;
 }
 
 void home::updateConnectionStatus(const QString &status)
