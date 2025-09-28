@@ -8,6 +8,9 @@
 #include <QPainter>
 #include <QProgressBar>
 #include <QTimer>
+#include <QPushButton>
+#include <QComboBox>
+#include <QMap>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <deque>
@@ -44,11 +47,21 @@ class home : public QWidget
     // 新增：CPU占用和CPU频率图表
     SystemChartWidget* m_cpuUsageChart = nullptr;
     SystemChartWidget* m_cpuFreqChart = nullptr;
+    QTimer *m_clashModeTimer = nullptr;
+    bool m_isUpdatingClashCombo = false;
+    bool m_isChangingClashMode = false;
+    ClashProxyMode m_currentClashMode = ClashProxyMode::Rule;
+    QString m_lastSelectedClashProxy;
 
   private slots:
     void updateCurrentWeather_30min();
     void updateCurrentTime_1s();
     void updateCurrentBilibiliFans_1min();
+    void on_pushButton_clash_rule_clicked();
+    void on_pushButton_clash_global_clicked();
+    void on_pushButton_clash_direct_clicked();
+    void refreshClashMode();
+    void handleClashComboIndexChanged(int index);
 
   public slots:
     Q_INVOKABLE void onSystemRealtimeDataReceived(const system_realtime_info &info);
@@ -61,4 +74,14 @@ class home : public QWidget
     void startSystemMonitoring();
     void stopSystemMonitoring();
     void updateConnectionStatus(const QString &status);
+    void initializeClashSection();
+    void startClashTrafficStream();
+    void stopClashTrafficStream();
+    void handleClashModeChanged(ClashProxyMode mode);
+    void updateClashModeButtons(ClashProxyMode activeMode);
+    void setClashMode(ClashProxyMode mode);
+    void populateClashComboBox();
+    QString formatBandwidth(qint64 kbps) const;
+    void updateClashTrafficLabels(const clash_traffic_info &info);
+    QPushButton *buttonForMode(ClashProxyMode mode) const;
 };

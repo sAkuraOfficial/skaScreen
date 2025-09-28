@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QObject>
+#include <QMetaType>
 #include <functional>
 #include <qstring.h>
 #include <string>
@@ -251,6 +252,152 @@ class clash_proxy_list
     }
 };
 
+// Clash 代理模式枚举
+enum class ClashProxyMode
+{
+    Rule,       // rule 模式
+    Global,     // global 模式
+    Direct      // direct 模式
+};
+
+// 将枚举转换为字符串
+inline QString clashProxyModeToString(ClashProxyMode mode)
+{
+    switch (mode) {
+        case ClashProxyMode::Rule: return "rule";
+        case ClashProxyMode::Global: return "global";
+        case ClashProxyMode::Direct: return "direct";
+        default: return "rule";
+    }
+}
+
+// 从字符串转换为枚举
+inline ClashProxyMode stringToClashProxyMode(const QString& str)
+{
+    if (str == "global") return ClashProxyMode::Global;
+    if (str == "direct") return ClashProxyMode::Direct;
+    return ClashProxyMode::Rule;
+}
+
+// Clash TUN 配置类
+class clash_tun_config
+{
+  public:
+    bool enable;                           // 是否启用
+    QString device;                        // 设备名称
+    QString stack;                         // 网络栈
+    std::vector<QString> dnsHijack;        // DNS劫持
+    bool autoRoute;                        // 自动路由
+    bool autoDetectInterface;              // 自动检测网络接口
+    int mtu;                               // MTU
+    std::vector<QString> inet4Address;     // IPv4地址
+
+    QString toString() const
+    {
+        QString dnsStr = "[";
+        for (size_t i = 0; i < dnsHijack.size(); ++i) {
+            dnsStr += dnsHijack[i];
+            if (i < dnsHijack.size() - 1) dnsStr += ", ";
+        }
+        dnsStr += "]";
+        
+        QString addrStr = "[";
+        for (size_t i = 0; i < inet4Address.size(); ++i) {
+            addrStr += inet4Address[i];
+            if (i < inet4Address.size() - 1) addrStr += ", ";
+        }
+        addrStr += "]";
+        
+        return "enable: " + QString(enable ? "true" : "false") +
+               ", device: " + device +
+               ", stack: " + stack +
+               ", dnsHijack: " + dnsStr +
+               ", autoRoute: " + QString(autoRoute ? "true" : "false") +
+               ", autoDetectInterface: " + QString(autoDetectInterface ? "true" : "false") +
+               ", mtu: " + QString::number(mtu) +
+               ", inet4Address: " + addrStr;
+    }
+};
+
+// Clash 配置信息类
+class clash_config_info
+{
+  public:
+    int port;                              // HTTP代理端口
+    int socksPort;                         // SOCKS5代理端口
+    int redirPort;                         // 透明代理重定向端口
+    int tproxyPort;                        // TProxy端口
+    int mixedPort;                         // 混合端口
+    clash_tun_config tun;                  // TUN配置
+    bool allowLan;                         // 是否允许局域网连接
+    QString bindAddress;                   // 绑定地址
+    QString mode;                          // 代理模式
+    bool unifiedDelay;                     // 统一延迟
+    QString logLevel;                      // 日志级别
+    bool ipv6;                             // 是否支持IPv6
+    QString interfaceName;                 // 网络接口名称
+    int routingMark;                       // 路由标记
+    bool geoAutoUpdate;                    // 地理位置数据自动更新
+    int geoUpdateInterval;                 // 地理位置数据更新间隔（小时）
+    bool geodataMode;                      // 地理位置数据模式
+    QString geodataLoader;                 // 地理位置数据加载器
+    QString geositeMatcher;                // Geosite匹配器
+    bool tcpConcurrent;                    // TCP并发
+    QString findProcessMode;               // 查找进程模式
+    bool sniffing;                         // 嗅探
+    QString globalUa;                      // 全局用户代理
+    bool etagSupport;                      // ETag支持
+
+    ClashProxyMode getProxyMode() const
+    {
+        return stringToClashProxyMode(mode);
+    }
+
+    QString toString() const
+    {
+        return "port: " + QString::number(port) +
+               ", socksPort: " + QString::number(socksPort) +
+               ", redirPort: " + QString::number(redirPort) +
+               ", tproxyPort: " + QString::number(tproxyPort) +
+               ", mixedPort: " + QString::number(mixedPort) +
+               ", allowLan: " + QString(allowLan ? "true" : "false") +
+               ", bindAddress: " + bindAddress +
+               ", mode: " + mode +
+               ", unifiedDelay: " + QString(unifiedDelay ? "true" : "false") +
+               ", logLevel: " + logLevel +
+               ", ipv6: " + QString(ipv6 ? "true" : "false") +
+               ", interfaceName: " + interfaceName +
+               ", routingMark: " + QString::number(routingMark) +
+               ", tun: {" + tun.toString() + "}"+
+               ", geoAutoUpdate: " + QString(geoAutoUpdate ? "true" : "false") +
+               ", geoUpdateInterval: " + QString::number(geoUpdateInterval) +
+               ", geodataMode: " + QString(geodataMode ? "true" : "false") +
+               ", geodataLoader: " + geodataLoader +
+               ", geositeMatcher: " + geositeMatcher +
+               ", tcpConcurrent: " + QString(tcpConcurrent ? "true" : "false") +
+               ", findProcessMode: " + findProcessMode +
+               ", sniffing: " + QString(sniffing ? "true" : "false") +
+               ", globalUa: " + globalUa +
+               ", etagSupport: " + QString(etagSupport ? "true" : "false");
+    }
+};
+
+// Clash 模式操作结果类
+class clash_mode_operation_result
+{
+  public:
+    bool success;       // 操作是否成功
+    QString message;    // 返回消息
+    ClashProxyMode mode; // 设置的模式
+
+    QString toString() const
+    {
+        return QString("success: ") + QString(success ? "true" : "false") +
+               ", message: " + message +
+               ", mode: " + clashProxyModeToString(mode);
+    }
+};
+
 // Clash 操作结果类
 class clash_operation_result
 {
@@ -265,6 +412,23 @@ class clash_operation_result
     }
 };
 
+// Clash 流量信息类
+class clash_traffic_info
+{
+  public:
+    qint64 up = 0;      // 上行速率（kbps）
+    qint64 down = 0;    // 下行速率（kbps）
+    qint64 timestamp = 0; // 时间戳
+
+    QString toString() const
+    {
+        return QString("up: %1 kbps, down: %2 kbps, timestamp: %3")
+            .arg(up)
+            .arg(down)
+            .arg(timestamp);
+    }
+};
+
 std::vector<weather_city_search> weather_city_search_get(QString location);
 std::vector<weather_daily> weather_daily_get(QString location, int days);
 weather_now weather_now_get(QString location);
@@ -276,6 +440,12 @@ bilibili_user_follower bilibili_user_follower_get(QString uid);
 clash_proxy_list clash_get_all_proxies();
 clash_proxy_info clash_get_proxy_info(QString proxyName);
 clash_operation_result clash_select_proxy(QString proxyName, QString targetProxyName);
+clash_config_info clash_get_config();
+ClashProxyMode clash_get_current_mode();
+clash_mode_operation_result clash_set_mode(ClashProxyMode mode);
+void clash_traffic_start_stream(std::function<void(clash_traffic_info)> callback);
+void clash_traffic_stop_stream();
+bool clash_traffic_is_stream_active();
 
 // System 实时数据模块函数
 void system_realtime_start_stream(std::function<void(system_realtime_info)> callback);
@@ -297,3 +467,10 @@ void bilibili_user_follower_get_async(QString uid, std::function<void(bilibili_u
 void clash_get_all_proxies_async(std::function<void(clash_proxy_list)> callback);
 void clash_get_proxy_info_async(QString proxyName, std::function<void(clash_proxy_info)> callback);
 void clash_select_proxy_async(QString proxyName, QString targetProxyName, std::function<void(clash_operation_result)> callback);
+void clash_get_config_async(std::function<void(clash_config_info)> callback);
+void clash_get_current_mode_async(std::function<void(ClashProxyMode)> callback);
+void clash_set_mode_async(ClashProxyMode mode, std::function<void(clash_mode_operation_result)> callback);
+void clash_traffic_start_stream_async(std::function<void(clash_traffic_info)> callback);
+void clash_traffic_stop_stream_async();
+
+Q_DECLARE_METATYPE(clash_traffic_info)

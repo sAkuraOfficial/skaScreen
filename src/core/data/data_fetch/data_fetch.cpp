@@ -9,6 +9,7 @@
 #include <QUuid>
 #include <qeventloop.h>
 #include <QMutexLocker>
+#include <QStringList>
 
 // 静态成员定义
 DataFetch* DataFetch::s_instance = nullptr;
@@ -50,6 +51,7 @@ DataFetch::~DataFetch()
 {
     // 停止SSE流和重连定时器
     stopSystemRealtimeStream();
+    stopClashTrafficStream();
     if (m_reconnectTimer) {
         m_reconnectTimer->stop();
     }
@@ -95,6 +97,9 @@ QString DataFetch::makeRequest(const QString &method, const QString &path,
     } else if (method == "POST") {
         QJsonDocument doc(body);
         reply = m_networkManager->post(request, doc.toJson());
+    } else if (method == "PATCH") {
+        QJsonDocument doc(body);
+        reply = m_networkManager->sendCustomRequest(request, "PATCH", doc.toJson());
     }
 
     if (reply) {
@@ -267,6 +272,78 @@ QString DataFetch::clash_selectProxy(const QString &proxyName, const QString &ta
     
     QString path = QString("/api/clash/proxies/%1").arg(QString::fromUtf8(QUrl::toPercentEncoding(proxyName)));
     return makeRequest("PUT", path, query);
+}
+
+QString DataFetch::clash_getConfig()
+{
+    return makeRequest("GET", "/api/clash/configs");
+}
+
+QString DataFetch::clash_setMode(const QString &mode)
+{
+    QUrlQuery query;
+    query.addQueryItem("mode", mode);
+    
+    return makeRequest("PATCH", "/api/clash/configs", query);
+}
+
+void DataFetch::startClashTrafficStream()
+{
+    if (m_clashTrafficStreamActive)
+    {
+        qDebug() << "Clash traffic stream is already active";
+        return;
+    }
+
+    QUrl url(m_baseUrl + "/api/clash/traffic/stream");
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "text/event-stream");
+    request.setRawHeader("Accept", "text/event-stream");
+    request.setRawHeader("Cache-Control", "no-cache");
+
+    m_clashTrafficReply = m_networkManager->get(request);
+
+    if (m_clashTrafficReply)
+    {
+        qDebug() << "Clash traffic stream started";
+        m_clashTrafficStreamActive = true;
+        m_clashTrafficBuffer.clear();
+
+        connect(m_clashTrafficReply, &QNetworkReply::readyRead, this, &DataFetch::onClashTrafficReadyRead);
+        connect(m_clashTrafficReply, QOverload<QNetworkReply::NetworkError>::of(&QNetworkReply::errorOccurred), this, &DataFetch::onClashTrafficError);
+        connect(m_clashTrafficReply, &QNetworkReply::finished, this, &DataFetch::onClashTrafficFinished);
+    }
+    else
+    {
+        qDebug() << "Failed to start clash traffic stream";
+        emit clashTrafficStreamError("Failed to create SSE request");
+    }
+}
+
+void DataFetch::stopClashTrafficStream()
+{
+    if (!m_clashTrafficStreamActive || !m_clashTrafficReply)
+    {
+        m_clashTrafficStreamActive = false;
+        return;
+    }
+
+    qDebug() << "Stopping clash traffic stream";
+
+    m_clashTrafficStreamActive = false;
+
+    m_clashTrafficReply->disconnect();
+    m_clashTrafficReply->abort();
+    m_clashTrafficReply->deleteLater();
+    m_clashTrafficReply = nullptr;
+    m_clashTrafficBuffer.clear();
+
+    emit clashTrafficStreamStopped();
+}
+
+bool DataFetch::isClashTrafficStreamActive() const
+{
+    return m_clashTrafficStreamActive;
 }
 
 // =============================================================================
@@ -540,4 +617,100 @@ void DataFetch::onReconnectTimer()
     
     // 尝试重新连接
     startSystemRealtimeStream();
+}
+
+void DataFetch::onClashTrafficReadyRead()
+{
+    if (!m_clashTrafficReply)
+    {
+        return;
+    }
+
+    QByteArray data = m_clashTrafficReply->readAll();
+    QString text = QString::fromUtf8(data);
+    m_clashTrafficBuffer += text;
+
+    QStringList lines = m_clashTrafficBuffer.split('\n');
+    if (!m_clashTrafficBuffer.endsWith('\n'))
+    {
+        m_clashTrafficBuffer = lines.takeLast();
+    }
+    else
+    {
+        m_clashTrafficBuffer.clear();
+    }
+
+    for (const QString &line : lines)
+    {
+        QString trimmed = line.trimmed();
+        if (trimmed.startsWith("data:"))
+        {
+            QString jsonStr = trimmed.mid(5).trimmed();
+            if (!jsonStr.isEmpty())
+            {
+                QJsonParseError error;
+                QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8(), &error);
+                if (error.error == QJsonParseError::NoError)
+                {
+                    emit clashTrafficDataReceived(doc.object());
+                }
+                else
+                {
+                    qDebug() << "Failed to parse clash traffic JSON data:" << error.errorString();
+                    qDebug() << "Raw data:" << jsonStr;
+                }
+            }
+        }
+    }
+}
+
+void DataFetch::onClashTrafficError(QNetworkReply::NetworkError error)
+{
+    Q_UNUSED(error);
+
+    QString errorString = m_clashTrafficReply ? m_clashTrafficReply->errorString() : QStringLiteral("Unknown error");
+    qDebug() << "Clash traffic stream error:" << errorString;
+
+    if (m_clashTrafficReply)
+    {
+        m_clashTrafficReply->disconnect();
+        m_clashTrafficReply->deleteLater();
+        m_clashTrafficReply = nullptr;
+    }
+
+    m_clashTrafficStreamActive = false;
+    m_clashTrafficBuffer.clear();
+
+    emit clashTrafficStreamError(errorString);
+}
+
+void DataFetch::onClashTrafficFinished()
+{
+    QString errorString;
+    bool hasError = false;
+
+    if (m_clashTrafficReply && m_clashTrafficReply->error() != QNetworkReply::NoError)
+    {
+        errorString = m_clashTrafficReply->errorString();
+        hasError = true;
+    }
+
+    if (m_clashTrafficReply)
+    {
+        m_clashTrafficReply->disconnect();
+        m_clashTrafficReply->deleteLater();
+        m_clashTrafficReply = nullptr;
+    }
+
+    m_clashTrafficStreamActive = false;
+    m_clashTrafficBuffer.clear();
+
+    if (hasError)
+    {
+        emit clashTrafficStreamError(errorString);
+    }
+    else
+    {
+        emit clashTrafficStreamStopped();
+    }
 }

@@ -41,6 +41,13 @@ class DataFetch : public QObject
     QString clash_getAllProxies();
     QString clash_getProxyInfo(const QString &proxyName);
     QString clash_selectProxy(const QString &proxyName, const QString &targetProxyName);
+    QString clash_getConfig();
+    QString clash_setMode(const QString &mode);
+
+  // Clash 流量实时数据模块
+  void startClashTrafficStream();
+  void stopClashTrafficStream();
+  bool isClashTrafficStreamActive() const;
 
     // System 实时数据模块
     void startSystemRealtimeStream();
@@ -58,6 +65,9 @@ class DataFetch : public QObject
     void systemRealtimeStreamStopped();
     void systemRealtimeConnectionStatusChanged(const QString &status); // 新增：连接状态变化
     void systemRealtimeStreamReconnecting();
+  void clashTrafficDataReceived(const QJsonObject &data);
+  void clashTrafficStreamError(const QString &error);
+  void clashTrafficStreamStopped();
 
   private slots:
     void onRequestFinished(QNetworkReply *reply);
@@ -66,6 +76,9 @@ class DataFetch : public QObject
     void onSseError(QNetworkReply::NetworkError error);
     void onSseFinished();
     void onReconnectTimer();
+  void onClashTrafficReadyRead();
+  void onClashTrafficError(QNetworkReply::NetworkError error);
+  void onClashTrafficFinished();
 
   private:
     // 私有构造函数
@@ -93,6 +106,11 @@ class DataFetch : public QObject
     int m_reconnectIntervalMs;
     int m_reconnectAttempts;
     static constexpr int MAX_RECONNECT_ATTEMPTS = 10; // 最大重连尝试次数，-1表示无限重连
+
+  // Clash 流量相关成员
+  QNetworkReply *m_clashTrafficReply = nullptr;
+  bool m_clashTrafficStreamActive = false;
+  QString m_clashTrafficBuffer;
 
     // 单例实例
     static DataFetch *s_instance;

@@ -4,11 +4,21 @@
 #include "../../utils/blur.h"
 #include "../../utils/img.h"
 #include <QLocale>
-#include <QToolTip>
 #include <QTimer>
+#include <QToolTip>
+#include <QComboBox>
+#include <QPushButton>
+#include <QPoint>
+#include <QSignalBlocker>
+#include <QOverload>
+#include <qgraphicslayout.h>
 #include <qstyleoption.h>
 #include <tyme.h>
-#include<qgraphicslayout.h>
+
+namespace
+{
+const QString kClashProxyGroupName = QString::fromUtf8("🚀 节点选择");
+}
 home::home(QWidget *parent)
     : QWidget(parent)
 
@@ -19,6 +29,7 @@ home::home(QWidget *parent)
 
     // 注册自定义类型以便在信号槽中使用
     qRegisterMetaType<system_realtime_info>("system_realtime_info");
+    qRegisterMetaType<clash_traffic_info>("clash_traffic_info");
 
     // 覆盖一下ui文件设置的样式表。
     setStyleSheet(QString::fromUtf8("#widget,#widget_2,#widget_3,#widget_4,#widget_system_info,#widget_5{\n"
@@ -30,11 +41,13 @@ home::home(QWidget *parent)
     // for (int i = 0; i <= 4; i++)
     // {
     //     auto *blur = new BlurEffect();
-    //     blur->set_blur_radius(16); // 可调整模糊半径
+
+        m_isUpdatingClashCombo = true;
     //     blur->set_border_radius(8);
     //     effects.append(blur);
     // }
 
+                    m_isUpdatingClashCombo = false;
     // // 设置到widget上
     // ui.widget->setGraphicsEffect(effects[0]);
     // ui.widget_2->setGraphicsEffect(effects[1]);
@@ -87,11 +100,18 @@ home::home(QWidget *parent)
     {
         qDebug() << "Failed to initialize system monitoring UI";
     }
+
+    initializeClashSection();
 }
 
 home::~home()
 {
     stopSystemMonitoring();
+    if (m_clashModeTimer)
+    {
+        m_clashModeTimer->stop();
+    }
+    stopClashTrafficStream();
 }
 
 void home::updateCurrentWeather_30min()
@@ -114,6 +134,7 @@ void home::updateCurrentWeather_30min()
 
 void home::updateCurrentTime_1s()
 {
+            m_isUpdatingClashCombo = false;
     using namespace tyme;
 
     // 更新当前时间
@@ -149,6 +170,288 @@ void home::updateCurrentBilibiliFans_1min()
     });
 }
 
+void home::initializeClashSection()
+{
+    if (ui.pushButton_clash_rule)
+    {
+        ui.pushButton_clash_rule->setCheckable(true);
+        ui.pushButton_clash_rule->setAutoExclusive(true);
+    }
+    if (ui.pushButton_clash_global)
+    {
+        ui.pushButton_clash_global->setCheckable(true);
+        ui.pushButton_clash_global->setAutoExclusive(true);
+    }
+    if (ui.pushButton_clash_direct)
+    {
+        ui.pushButton_clash_direct->setCheckable(true);
+        ui.pushButton_clash_direct->setAutoExclusive(true);
+    }
+
+    if (ui.clash_combox)
+    {
+        ui.clash_combox->setEnabled(false);
+        connect(ui.clash_combox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &home::handleClashComboIndexChanged);
+    }
+
+    updateClashModeButtons(m_currentClashMode);
+
+    if (!m_clashModeTimer)
+    {
+        m_clashModeTimer = new QTimer(this);
+        connect(m_clashModeTimer, &QTimer::timeout, this, &home::refreshClashMode);
+    }
+    m_clashModeTimer->start(1000);
+    refreshClashMode();
+
+    populateClashComboBox();
+    startClashTrafficStream();
+}
+
+void home::startClashTrafficStream()
+{
+    clash_traffic_start_stream_async([this](clash_traffic_info info) {
+        QMetaObject::invokeMethod(this, [this, info]() {
+            updateClashTrafficLabels(info);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void home::stopClashTrafficStream()
+{
+    clash_traffic_stop_stream_async();
+}
+
+void home::refreshClashMode()
+{
+    clash_get_current_mode_async([this](ClashProxyMode mode) {
+        QMetaObject::invokeMethod(this, [this, mode]() {
+            handleClashModeChanged(mode);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void home::handleClashModeChanged(ClashProxyMode mode)
+{
+    if (m_currentClashMode == mode)
+    {
+        updateClashModeButtons(mode);
+        return;
+    }
+
+    m_currentClashMode = mode;
+    updateClashModeButtons(mode);
+}
+
+void home::updateClashModeButtons(ClashProxyMode activeMode)
+{
+    if (auto *ruleButton = ui.pushButton_clash_rule)
+    {
+        ruleButton->setCheckable(true);
+        ruleButton->setAutoExclusive(true);
+        ruleButton->setChecked(activeMode == ClashProxyMode::Rule);
+    }
+    if (auto *globalButton = ui.pushButton_clash_global)
+    {
+        globalButton->setCheckable(true);
+        globalButton->setAutoExclusive(true);
+        globalButton->setChecked(activeMode == ClashProxyMode::Global);
+    }
+    if (auto *directButton = ui.pushButton_clash_direct)
+    {
+        directButton->setCheckable(true);
+        directButton->setAutoExclusive(true);
+        directButton->setChecked(activeMode == ClashProxyMode::Direct);
+    }
+}
+
+void home::populateClashComboBox()
+{
+    if (!ui.clash_combox)
+    {
+        return;
+    }
+
+    ui.clash_combox->setEnabled(false);
+    m_isUpdatingClashCombo = true;
+
+    clash_get_proxy_info_async(kClashProxyGroupName, [this](clash_proxy_info info) {
+        QMetaObject::invokeMethod(this, [this, info]() {
+            if (!ui.clash_combox)
+            {
+                m_isUpdatingClashCombo = false;
+                return;
+            }
+
+            QSignalBlocker blocker(ui.clash_combox);
+            ui.clash_combox->clear();
+
+            for (const QString &nodeName : info.all)
+            {
+                ui.clash_combox->addItem(nodeName);
+            }
+
+            if (!info.now.isEmpty())
+            {
+                int currentIndex = ui.clash_combox->findText(info.now);
+                if (currentIndex < 0)
+                {
+                    ui.clash_combox->addItem(info.now);
+                    currentIndex = ui.clash_combox->findText(info.now);
+                }
+                if (currentIndex >= 0)
+                {
+                    ui.clash_combox->setCurrentIndex(currentIndex);
+                }
+                m_lastSelectedClashProxy = info.now;
+            }
+            else if (ui.clash_combox->count() > 0)
+            {
+                m_lastSelectedClashProxy = ui.clash_combox->currentText();
+            }
+            else
+            {
+                m_lastSelectedClashProxy.clear();
+            }
+
+            ui.clash_combox->setEnabled(true);
+            m_isUpdatingClashCombo = false;
+        }, Qt::QueuedConnection);
+    });
+}
+
+QString home::formatBandwidth(qint64 kbps) const
+{
+    double value = static_cast<double>(kbps);
+    QString unit = QStringLiteral("kbps");
+
+    if (value >= 1024.0)
+    {
+        value /= 1024.0;
+        unit = QStringLiteral("Mbps");
+    }
+    if (value >= 1024.0)
+    {
+        value /= 1024.0;
+        unit = QStringLiteral("Gbps");
+    }
+
+    int precision = value >= 100.0 ? 0 : 2;
+    return QString::number(value, 'f', precision) + ' ' + unit;
+}
+
+void home::updateClashTrafficLabels(const clash_traffic_info &info)
+{
+    if (ui.label_traffic_upload)
+    {
+        ui.label_traffic_upload->setText(QStringLiteral("⬆️%1").arg(formatBandwidth(info.up)));
+    }
+    if (ui.label_traffic_down)
+    {
+        ui.label_traffic_down->setText(QStringLiteral("⬇️%1").arg(formatBandwidth(info.down)));
+    }
+}
+
+QPushButton *home::buttonForMode(ClashProxyMode mode) const
+{
+    switch (mode)
+    {
+    case ClashProxyMode::Rule:
+        return ui.pushButton_clash_rule;
+    case ClashProxyMode::Global:
+        return ui.pushButton_clash_global;
+    case ClashProxyMode::Direct:
+        return ui.pushButton_clash_direct;
+    }
+    return nullptr;
+}
+
+void home::handleClashComboIndexChanged(int index)
+{
+    if (!ui.clash_combox || index < 0 || m_isUpdatingClashCombo)
+    {
+        return;
+    }
+
+    const QString nodeName = ui.clash_combox->itemText(index);
+    if (nodeName.isEmpty())
+    {
+        return;
+    }
+
+    ui.clash_combox->setEnabled(false);
+
+    clash_select_proxy_async(kClashProxyGroupName, nodeName, [this, nodeName](clash_operation_result result) {
+        QMetaObject::invokeMethod(this, [this, result, nodeName]() {
+            if (!ui.clash_combox)
+            {
+                return;
+            }
+
+            ui.clash_combox->setEnabled(true);
+
+            if (!result.success)
+            {
+                const QString message = result.message.isEmpty() ? tr("切换节点失败") : result.message;
+                const QPoint globalPos = ui.clash_combox->mapToGlobal(QPoint(ui.clash_combox->width() / 2, ui.clash_combox->height()));
+                QToolTip::showText(globalPos, message, ui.clash_combox, QRect(), 2000);
+
+                QSignalBlocker blocker(ui.clash_combox);
+                m_isUpdatingClashCombo = true;
+                int revertIndex = ui.clash_combox->findText(m_lastSelectedClashProxy);
+                if (revertIndex >= 0)
+                {
+                    ui.clash_combox->setCurrentIndex(revertIndex);
+                }
+                m_isUpdatingClashCombo = false;
+                return;
+            }
+
+            m_lastSelectedClashProxy = nodeName;
+            populateClashComboBox();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void home::setClashMode(ClashProxyMode mode)
+{
+    if (m_isChangingClashMode || !buttonForMode(mode))
+    {
+        return;
+    }
+
+    if (mode == m_currentClashMode)
+    {
+        updateClashModeButtons(mode);
+        return;
+    }
+
+    m_isChangingClashMode = true;
+    updateClashModeButtons(mode);
+
+    clash_set_mode_async(mode, [this, mode](clash_mode_operation_result result) {
+        QMetaObject::invokeMethod(this, [this, result, mode]() {
+            m_isChangingClashMode = false;
+
+            QPushButton *targetButton = buttonForMode(mode);
+
+            if (!result.success)
+            {
+                const QString message = result.message.isEmpty() ? tr("切换模式失败") : result.message;
+                if (targetButton)
+                {
+                    const QPoint globalPos = targetButton->mapToGlobal(QPoint(targetButton->width() / 2, targetButton->height()));
+                    QToolTip::showText(globalPos, message, targetButton, QRect(), 2000);
+                }
+                updateClashModeButtons(m_currentClashMode);
+                return;
+            }
+
+            handleClashModeChanged(mode);
+        }, Qt::QueuedConnection);
+    });
+}
+
 void home::paintEvent(QPaintEvent *event)
 {
     QStyleOption opt;
@@ -165,9 +468,9 @@ void home::paintEvent(QPaintEvent *event)
 // =============================================================================
 // 系统监控功能实现
 // =============================================================================
+#include <QCategoryAxis>
 #include <QValueAxis>
 #include <qsplineseries.h>
-#include <QCategoryAxis>
 bool home::initSystemInfoUI()
 {
     QHBoxLayout *layout = new QHBoxLayout(ui.widget_system_info);
@@ -182,6 +485,7 @@ bool home::initSystemInfoUI()
     layout->addWidget(m_cpuUsageChart, 1);
 
     m_cpuFreqChart = new SystemChartWidget("CPU频率", "GHz", ui.widget_system_info);
+                            m_isUpdatingClashCombo = false;
     m_cpuFreqChart->setYAxisRange(1, 2); // 假设最大4GHz
     m_cpuFreqChart->setXAxisLabelInterval(240);
     m_cpuFreqChart->setMaxPoints(60);
@@ -245,7 +549,8 @@ void home::onSystemRealtimeDataReceived(const system_realtime_info &info)
     // 解析CPU频率（如 "1.81 GHz"）
     double cpuFreq = 0.0;
     QString cpuFreqStr = info.cpuFrequency;
-    if (!cpuFreqStr.isEmpty()) {
+    if (!cpuFreqStr.isEmpty())
+    {
         QString freqNum = cpuFreqStr;
         freqNum.remove("GHz");
         freqNum.remove(" ");
@@ -253,10 +558,12 @@ void home::onSystemRealtimeDataReceived(const system_realtime_info &info)
     }
 
     QDateTime now = QDateTime::currentDateTime();
-    if (m_cpuUsageChart) {
+    if (m_cpuUsageChart)
+    {
         m_cpuUsageChart->appendDataPoint(cpuUsage, now);
     }
-    if (m_cpuFreqChart) {
+    if (m_cpuFreqChart)
+    {
         m_cpuFreqChart->appendDataPoint(cpuFreq, now);
     }
 
@@ -341,4 +648,19 @@ void home::updateConnectionStatus(const QString &status)
     m_connectionStatusLabel->setStyleSheet(styleSheet);
 
     qDebug() << "Connection status updated:" << status << "→" << displayText;
+}
+
+void home::on_pushButton_clash_rule_clicked()
+{
+    setClashMode(ClashProxyMode::Rule);
+}
+
+void home::on_pushButton_clash_global_clicked()
+{
+    setClashMode(ClashProxyMode::Global);
+}
+
+void home::on_pushButton_clash_direct_clicked()
+{
+    setClashMode(ClashProxyMode::Direct);
 }

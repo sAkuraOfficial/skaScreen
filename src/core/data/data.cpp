@@ -545,6 +545,71 @@ clash_proxy_info parseProxyInfo(const QJsonObject &proxyData)
     return info;
 }
 
+// 解析TUN配置的辅助函数
+clash_tun_config parseTunConfig(const QJsonObject &tunData)
+{
+    clash_tun_config config;
+
+    config.enable = tunData["enable"].toBool();
+    config.device = tunData["device"].toString();
+    config.stack = tunData["stack"].toString();
+    config.autoRoute = tunData["autoRoute"].toBool();
+    config.autoDetectInterface = tunData["autoDetectInterface"].toBool();
+    config.mtu = tunData["mtu"].toInt();
+
+    // 解析DNS劫持数组
+    QJsonArray dnsArray = tunData["dnsHijack"].toArray();
+    for (const QJsonValue &value : dnsArray)
+    {
+        config.dnsHijack.push_back(value.toString());
+    }
+
+    // 解析IPv4地址数组
+    QJsonArray addrArray = tunData["inet4Address"].toArray();
+    for (const QJsonValue &value : addrArray)
+    {
+        config.inet4Address.push_back(value.toString());
+    }
+
+    return config;
+}
+
+// 解析Clash配置信息的辅助函数
+clash_config_info parseClashConfig(const QJsonObject &configData)
+{
+    clash_config_info config;
+
+    config.port = configData["port"].toInt();
+    config.socksPort = configData["socksPort"].toInt();
+    config.redirPort = configData["redirPort"].toInt();
+    config.tproxyPort = configData["tproxyPort"].toInt();
+    config.mixedPort = configData["mixedPort"].toInt();
+    config.allowLan = configData["allowLan"].toBool();
+    config.bindAddress = configData["bindAddress"].toString();
+    config.mode = configData["mode"].toString();
+    config.unifiedDelay = configData["unifiedDelay"].toBool();
+    config.logLevel = configData["logLevel"].toString();
+    config.ipv6 = configData["ipv6"].toBool();
+    config.interfaceName = configData["interfaceName"].toString();
+    config.routingMark = configData["routingMark"].toInt();
+    config.geoAutoUpdate = configData["geoAutoUpdate"].toBool();
+    config.geoUpdateInterval = configData["geoUpdateInterval"].toInt();
+    config.geodataMode = configData["geodataMode"].toBool();
+    config.geodataLoader = configData["geodataLoader"].toString();
+    config.geositeMatcher = configData["geositeMatcher"].toString();
+    config.tcpConcurrent = configData["tcpConcurrent"].toBool();
+    config.findProcessMode = configData["findProcessMode"].toString();
+    config.sniffing = configData["sniffing"].toBool();
+    config.globalUa = configData["globalUa"].toString();
+    config.etagSupport = configData["etagSupport"].toBool();
+
+    // 解析TUN配置
+    QJsonObject tunObj = configData["tun"].toObject();
+    config.tun = parseTunConfig(tunObj);
+
+    return config;
+}
+
 // 同步版本：获取所有代理列表
 clash_proxy_list clash_get_all_proxies()
 {
@@ -646,6 +711,85 @@ clash_operation_result clash_select_proxy(QString proxyName, QString targetProxy
     });
 
     QString requestId = fetch->clash_selectProxy(proxyName, targetProxyName);
+
+    // 等待完成
+    while (!finished)
+    {
+        QCoreApplication::processEvents();
+    }
+
+    return result;
+}
+
+// 同步版本：获取Clash配置信息
+clash_config_info clash_get_config()
+{
+    qWarning() << "Using synchronous clash_get_config - consider using async version";
+
+    clash_config_info result;
+    DataFetch *fetch = DataFetch::instance();
+
+    QObject context;
+    bool finished = false;
+
+    QObject::connect(fetch, &DataFetch::requestFinished, &context, [&](const QString &requestId, const QJsonObject &json) {
+        QJsonObject data = json["data"].toObject();
+        result = parseClashConfig(data);
+        finished = true;
+    });
+
+    QObject::connect(fetch, &DataFetch::requestError, &context, [&](const QString &requestId, const QString &error) {
+        qDebug() << "clash_get_config error:" << error;
+        finished = true;
+    });
+
+    QString requestId = fetch->clash_getConfig();
+
+    // 等待完成
+    while (!finished)
+    {
+        QCoreApplication::processEvents();
+    }
+
+    return result;
+}
+
+// 同步版本：获取当前Clash代理模式
+ClashProxyMode clash_get_current_mode()
+{
+    clash_config_info config = clash_get_config();
+    return config.getProxyMode();
+}
+
+// 同步版本：设置Clash代理模式
+clash_mode_operation_result clash_set_mode(ClashProxyMode mode)
+{
+    qWarning() << "Using synchronous clash_set_mode - consider using async version";
+
+    clash_mode_operation_result result;
+    result.mode = mode;
+    DataFetch *fetch = DataFetch::instance();
+
+    QObject context;
+    bool finished = false;
+
+    QObject::connect(fetch, &DataFetch::requestFinished, &context, [&](const QString &requestId, const QJsonObject &json) {
+        result.success = (json["code"].toInt() == 0);
+        result.message = json["message"].toString();
+        if (result.message.isEmpty() && result.success)
+        {
+            result.message = "Mode set successfully";
+        }
+        finished = true;
+    });
+
+    QObject::connect(fetch, &DataFetch::requestError, &context, [&](const QString &requestId, const QString &error) {
+        result.success = false;
+        result.message = error;
+        finished = true;
+    });
+
+    QString requestId = fetch->clash_setMode(clashProxyModeToString(mode));
 
     // 等待完成
     while (!finished)
@@ -823,195 +967,391 @@ void clash_select_proxy_async(QString proxyName, QString targetProxyName, std::f
     });
 }
 
+// 异步版本：获取Clash配置信息
+void clash_get_config_async(std::function<void(clash_config_info)> callback)
+{
+    DataFetch *fetch = DataFetch::instance();
+
+    QObject *context = new QObject();
+
+    QString targetRequestId = fetch->clash_getConfig();
+    qDebug() << "clash_get_config_async: targetRequestId =" << targetRequestId;
+
+    if (targetRequestId.isEmpty())
+    {
+        clash_config_info result;
+        callback(result);
+        context->deleteLater();
+        return;
+    }
+
+    QObject::connect(fetch, &DataFetch::requestFinished, context, [callback, context, targetRequestId](const QString &requestId, const QJsonObject &json) {
+        if (requestId == targetRequestId)
+        {
+            clash_config_info result;
+            QJsonObject data = json["data"].toObject();
+            result = parseClashConfig(data);
+
+            qDebug() << "clash_get_config_async response received:" << result.toString();
+            callback(result);
+            context->deleteLater();
+        }
+    });
+
+    QObject::connect(fetch, &DataFetch::requestError, context, [callback, context, targetRequestId](const QString &requestId, const QString &error) {
+        if (requestId == targetRequestId)
+        {
+            qDebug() << "clash_get_config_async error:" << error;
+            clash_config_info result; // 返回空结果
+            callback(result);
+            context->deleteLater();
+        }
+    });
+}
+
+// 异步版本：获取当前Clash代理模式
+void clash_get_current_mode_async(std::function<void(ClashProxyMode)> callback)
+{
+    clash_get_config_async([callback](clash_config_info config) {
+        callback(config.getProxyMode());
+    });
+}
+
+// 异步版本：设置Clash代理模式
+void clash_set_mode_async(ClashProxyMode mode, std::function<void(clash_mode_operation_result)> callback)
+{
+    DataFetch *fetch = DataFetch::instance();
+
+    QObject *context = new QObject();
+
+    QString targetRequestId = fetch->clash_setMode(clashProxyModeToString(mode));
+    qDebug() << "clash_set_mode_async: targetRequestId =" << targetRequestId;
+
+    if (targetRequestId.isEmpty())
+    {
+        clash_mode_operation_result result;
+        result.success = false;
+        result.message = "Failed to create request";
+        result.mode = mode;
+        callback(result);
+        context->deleteLater();
+        return;
+    }
+
+    QObject::connect(fetch, &DataFetch::requestFinished, context, [callback, context, targetRequestId, mode](const QString &requestId, const QJsonObject &json) {
+        if (requestId == targetRequestId)
+        {
+            clash_mode_operation_result result;
+            result.success = (json["code"].toInt() == 0);
+            result.message = json["message"].toString();
+            result.mode = mode;
+
+            if (result.message.isEmpty() && result.success)
+            {
+                result.message = "Mode set successfully";
+            }
+
+            qDebug() << "clash_set_mode_async response received:" << result.toString();
+            callback(result);
+            context->deleteLater();
+        }
+    });
+
+    QObject::connect(fetch, &DataFetch::requestError, context, [callback, context, targetRequestId, mode](const QString &requestId, const QString &error) {
+        if (requestId == targetRequestId)
+        {
+            qDebug() << "clash_set_mode_async error:" << error;
+            clash_mode_operation_result result;
+            result.success = false;
+            result.message = error;
+            result.mode = mode;
+            callback(result);
+            context->deleteLater();
+        }
+    });
+}
+
 // =============================================================================
 // System 实时数据模块实现
 // =============================================================================
 
 // 用于存储回调函数的静态变量
+static std::function<void(clash_traffic_info)> g_clashTrafficCallback = nullptr;
+static QObject *g_clashTrafficContext = nullptr;
 static std::function<void(system_realtime_info)> g_systemRealtimeCallback = nullptr;
 static std::function<void(QString)> g_systemStatusCallback = nullptr;
-static QObject* g_systemRealtimeContext = nullptr;
+static QObject *g_systemRealtimeContext = nullptr;
+
+// Clash 流量实时数据流
+void clash_traffic_start_stream(std::function<void(clash_traffic_info)> callback)
+{
+    DataFetch *fetch = DataFetch::instance();
+
+    if (fetch->isClashTrafficStreamActive())
+    {
+        qDebug() << "Stopping existing clash traffic stream before starting new one";
+        clash_traffic_stop_stream();
+    }
+
+    g_clashTrafficCallback = callback;
+
+    if (g_clashTrafficContext)
+    {
+        g_clashTrafficContext->deleteLater();
+    }
+    g_clashTrafficContext = new QObject();
+
+    QObject::connect(fetch, &DataFetch::clashTrafficDataReceived, g_clashTrafficContext, [](const QJsonObject &json) {
+        if (!g_clashTrafficCallback)
+        {
+            return;
+        }
+
+        clash_traffic_info info;
+        info.up = json.value("up").toVariant().toLongLong();
+        info.down = json.value("down").toVariant().toLongLong();
+        info.timestamp = json.value("timestamp").toVariant().toLongLong();
+
+        g_clashTrafficCallback(info);
+    });
+
+    QObject::connect(fetch, &DataFetch::clashTrafficStreamError, g_clashTrafficContext, [](const QString &error) {
+        qDebug() << "Clash traffic stream error:" << error;
+    });
+
+    QObject::connect(fetch, &DataFetch::clashTrafficStreamStopped, g_clashTrafficContext, []() {
+        qDebug() << "Clash traffic stream stopped";
+        if (g_clashTrafficContext)
+        {
+            g_clashTrafficContext->deleteLater();
+            g_clashTrafficContext = nullptr;
+        }
+        g_clashTrafficCallback = nullptr;
+    });
+
+    fetch->startClashTrafficStream();
+
+    qDebug() << "Clash traffic stream started";
+}
+
+void clash_traffic_stop_stream()
+{
+    DataFetch *fetch = DataFetch::instance();
+    fetch->stopClashTrafficStream();
+
+    if (g_clashTrafficContext)
+    {
+        g_clashTrafficContext->deleteLater();
+        g_clashTrafficContext = nullptr;
+    }
+
+    g_clashTrafficCallback = nullptr;
+
+    qDebug() << "Clash traffic stream stopped by user";
+}
+
+bool clash_traffic_is_stream_active()
+{
+    DataFetch *fetch = DataFetch::instance();
+    return fetch->isClashTrafficStreamActive();
+}
+
+void clash_traffic_start_stream_async(std::function<void(clash_traffic_info)> callback)
+{
+    clash_traffic_start_stream(callback);
+}
+
+void clash_traffic_stop_stream_async()
+{
+    clash_traffic_stop_stream();
+}
 
 // 启动系统实时数据流
 void system_realtime_start_stream(std::function<void(system_realtime_info)> callback)
 {
-    DataFetch* fetch = DataFetch::instance();
-    
+    DataFetch *fetch = DataFetch::instance();
+
     // 如果已经有活跃的流，先停止它
-    if (fetch->isSystemRealtimeStreamActive()) {
+    if (fetch->isSystemRealtimeStreamActive())
+    {
         qDebug() << "Stopping existing realtime stream before starting new one";
         system_realtime_stop_stream();
     }
-    
+
     // 存储回调函数
     g_systemRealtimeCallback = callback;
-    
+
     // 创建上下文对象
-    if (g_systemRealtimeContext) {
+    if (g_systemRealtimeContext)
+    {
         g_systemRealtimeContext->deleteLater();
     }
     g_systemRealtimeContext = new QObject();
-    
+
     // 连接SSE数据接收信号
-    QObject::connect(fetch, &DataFetch::systemRealtimeDataReceived, g_systemRealtimeContext,
-        [](const QJsonObject& json) {
-            if (!g_systemRealtimeCallback) {
-                return;
-            }
-            
-            qDebug() << "Received system realtime data:" << json;
-            
-            // 解析JSON数据为system_realtime_info对象
-            system_realtime_info info;
-            info.cpuUsage = json["cpuUsage"].toString();
-            info.cpuFrequency = json["cpuFrequency"].toString();
-            info.memoryUsage = json["memoryUsage"].toString();
-            info.totalMemory = json["totalMemory"].toString();
-            info.usedMemory = json["usedMemory"].toString();
-            info.timestamp = json["timestamp"].toVariant().toLongLong();
-            
-            qDebug() << "Parsed system realtime info:" << info.toString();
-            
-            // 调用回调函数
-            g_systemRealtimeCallback(info);
-        });
-    
+    QObject::connect(fetch, &DataFetch::systemRealtimeDataReceived, g_systemRealtimeContext, [](const QJsonObject &json) {
+        if (!g_systemRealtimeCallback)
+        {
+            return;
+        }
+
+        qDebug() << "Received system realtime data:" << json;
+
+        // 解析JSON数据为system_realtime_info对象
+        system_realtime_info info;
+        info.cpuUsage = json["cpuUsage"].toString();
+        info.cpuFrequency = json["cpuFrequency"].toString();
+        info.memoryUsage = json["memoryUsage"].toString();
+        info.totalMemory = json["totalMemory"].toString();
+        info.usedMemory = json["usedMemory"].toString();
+        info.timestamp = json["timestamp"].toVariant().toLongLong();
+
+        qDebug() << "Parsed system realtime info:" << info.toString();
+
+        // 调用回调函数
+        g_systemRealtimeCallback(info);
+    });
+
     // 连接错误信号
-    QObject::connect(fetch, &DataFetch::systemRealtimeStreamError, g_systemRealtimeContext,
-        [](const QString& error) {
-            qDebug() << "System realtime stream error:" << error;
-            // 可以选择在这里通知用户或重试
-        });
-    
+    QObject::connect(fetch, &DataFetch::systemRealtimeStreamError, g_systemRealtimeContext, [](const QString &error) {
+        qDebug() << "System realtime stream error:" << error;
+        // 可以选择在这里通知用户或重试
+    });
+
     // 连接流停止信号
-    QObject::connect(fetch, &DataFetch::systemRealtimeStreamStopped, g_systemRealtimeContext,
-        []() {
-            qDebug() << "System realtime stream stopped";
-            if (g_systemRealtimeContext) {
-                g_systemRealtimeContext->deleteLater();
-                g_systemRealtimeContext = nullptr;
-            }
-            g_systemRealtimeCallback = nullptr;
-        });
-    
+    QObject::connect(fetch, &DataFetch::systemRealtimeStreamStopped, g_systemRealtimeContext, []() {
+        qDebug() << "System realtime stream stopped";
+        if (g_systemRealtimeContext)
+        {
+            g_systemRealtimeContext->deleteLater();
+            g_systemRealtimeContext = nullptr;
+        }
+        g_systemRealtimeCallback = nullptr;
+    });
+
     // 启动SSE流
     fetch->startSystemRealtimeStream();
-    
+
     qDebug() << "System realtime stream started";
 }
 
 // 启动系统实时数据流（带状态回调）
 void system_realtime_start_stream_with_status(
     std::function<void(system_realtime_info)> dataCallback,
-    std::function<void(QString)> statusCallback)
+    std::function<void(QString)> statusCallback
+)
 {
-    DataFetch* fetch = DataFetch::instance();
-    
+    DataFetch *fetch = DataFetch::instance();
+
     // 如果已经有活跃的流，先停止它
-    if (fetch->isSystemRealtimeStreamActive()) {
+    if (fetch->isSystemRealtimeStreamActive())
+    {
         qDebug() << "Stopping existing realtime stream before starting new one";
         system_realtime_stop_stream();
     }
-    
+
     // 存储回调函数
     g_systemRealtimeCallback = dataCallback;
     g_systemStatusCallback = statusCallback;
-    
+
     // 创建上下文对象
-    if (g_systemRealtimeContext) {
+    if (g_systemRealtimeContext)
+    {
         g_systemRealtimeContext->deleteLater();
     }
     g_systemRealtimeContext = new QObject();
-    
+
     // 连接SSE数据接收信号
-    QObject::connect(fetch, &DataFetch::systemRealtimeDataReceived, g_systemRealtimeContext,
-        [](const QJsonObject& json) {
-            if (!g_systemRealtimeCallback) {
-                return;
-            }
-            
-            // 解析JSON数据为system_realtime_info对象
-            system_realtime_info info;
-            info.cpuUsage = json["cpuUsage"].toString();
-            info.cpuFrequency = json["cpuFrequency"].toString();
-            info.memoryUsage = json["memoryUsage"].toString();
-            info.totalMemory = json["totalMemory"].toString();
-            info.usedMemory = json["usedMemory"].toString();
-            info.timestamp = json["timestamp"].toVariant().toLongLong();
-            
-            // 调用数据回调函数
-            g_systemRealtimeCallback(info);
-        });
-    
+    QObject::connect(fetch, &DataFetch::systemRealtimeDataReceived, g_systemRealtimeContext, [](const QJsonObject &json) {
+        if (!g_systemRealtimeCallback)
+        {
+            return;
+        }
+
+        // 解析JSON数据为system_realtime_info对象
+        system_realtime_info info;
+        info.cpuUsage = json["cpuUsage"].toString();
+        info.cpuFrequency = json["cpuFrequency"].toString();
+        info.memoryUsage = json["memoryUsage"].toString();
+        info.totalMemory = json["totalMemory"].toString();
+        info.usedMemory = json["usedMemory"].toString();
+        info.timestamp = json["timestamp"].toVariant().toLongLong();
+
+        // 调用数据回调函数
+        g_systemRealtimeCallback(info);
+    });
+
     // 连接状态信号
-    QObject::connect(fetch, &DataFetch::systemRealtimeStreamStarted, g_systemRealtimeContext,
-        []() {
-            if (g_systemStatusCallback) {
-                g_systemStatusCallback("connected");
-            }
-        });
-        
-    QObject::connect(fetch, &DataFetch::systemRealtimeStreamReconnecting, g_systemRealtimeContext,
-        []() {
-            if (g_systemStatusCallback) {
-                g_systemStatusCallback("reconnecting");
-            }
-        });
-    
+    QObject::connect(fetch, &DataFetch::systemRealtimeStreamStarted, g_systemRealtimeContext, []() {
+        if (g_systemStatusCallback)
+        {
+            g_systemStatusCallback("connected");
+        }
+    });
+
+    QObject::connect(fetch, &DataFetch::systemRealtimeStreamReconnecting, g_systemRealtimeContext, []() {
+        if (g_systemStatusCallback)
+        {
+            g_systemStatusCallback("reconnecting");
+        }
+    });
+
     // 新增：监听连接状态变化信号
-    QObject::connect(fetch, &DataFetch::systemRealtimeConnectionStatusChanged, g_systemRealtimeContext,
-        [](const QString& status) {
-            if (g_systemStatusCallback) {
-                qDebug() << "Connection status updated:" << status;
-                g_systemStatusCallback(status);
-            }
-        });
-    
-    QObject::connect(fetch, &DataFetch::systemRealtimeStreamError, g_systemRealtimeContext,
-        [](const QString& error) {
-            if (g_systemStatusCallback) {
-                g_systemStatusCallback("error: " + error);
-            }
-        });
-    
-    QObject::connect(fetch, &DataFetch::systemRealtimeStreamStopped, g_systemRealtimeContext,
-        []() {
-            if (g_systemStatusCallback) {
-                g_systemStatusCallback("disconnected");
-            }
-            if (g_systemRealtimeContext) {
-                g_systemRealtimeContext->deleteLater();
-                g_systemRealtimeContext = nullptr;
-            }
-            g_systemRealtimeCallback = nullptr;
-            g_systemStatusCallback = nullptr;
-        });
-    
+    QObject::connect(fetch, &DataFetch::systemRealtimeConnectionStatusChanged, g_systemRealtimeContext, [](const QString &status) {
+        if (g_systemStatusCallback)
+        {
+            qDebug() << "Connection status updated:" << status;
+            g_systemStatusCallback(status);
+        }
+    });
+
+    QObject::connect(fetch, &DataFetch::systemRealtimeStreamError, g_systemRealtimeContext, [](const QString &error) {
+        if (g_systemStatusCallback)
+        {
+            g_systemStatusCallback("error: " + error);
+        }
+    });
+
+    QObject::connect(fetch, &DataFetch::systemRealtimeStreamStopped, g_systemRealtimeContext, []() {
+        if (g_systemStatusCallback)
+        {
+            g_systemStatusCallback("disconnected");
+        }
+        if (g_systemRealtimeContext)
+        {
+            g_systemRealtimeContext->deleteLater();
+            g_systemRealtimeContext = nullptr;
+        }
+        g_systemRealtimeCallback = nullptr;
+        g_systemStatusCallback = nullptr;
+    });
+
     // 启动SSE流
     fetch->startSystemRealtimeStream();
-    
+
     qDebug() << "System realtime stream with status callbacks started";
 }
 
 // 停止系统实时数据流
 void system_realtime_stop_stream()
 {
-    DataFetch* fetch = DataFetch::instance();
+    DataFetch *fetch = DataFetch::instance();
     fetch->stopSystemRealtimeStream();
-    
+
     // 清理回调和上下文
-    if (g_systemRealtimeContext) {
+    if (g_systemRealtimeContext)
+    {
         g_systemRealtimeContext->deleteLater();
         g_systemRealtimeContext = nullptr;
     }
     g_systemRealtimeCallback = nullptr;
-    
+
     qDebug() << "System realtime stream stopped by user";
 }
 
 // 检查系统实时数据流是否活跃
 bool system_realtime_is_stream_active()
 {
-    DataFetch* fetch = DataFetch::instance();
+    DataFetch *fetch = DataFetch::instance();
     return fetch->isSystemRealtimeStreamActive();
 }
