@@ -443,20 +443,11 @@ class clash_traffic_info
     }
 };
 
-std::vector<weather_city_search> weather_city_search_get(QString location);
-std::vector<weather_daily> weather_daily_get(QString location, int days);
-weather_now weather_now_get(QString location);
 
 // Bilibili 模块函数
 bilibili_user_follower bilibili_user_follower_get(QString uid);
 
 // Clash 模块函数
-clash_proxy_list clash_get_all_proxies();
-clash_proxy_info clash_get_proxy_info(QString proxyName);
-clash_operation_result clash_select_proxy(QString proxyName, QString targetProxyName);
-clash_config_info clash_get_config();
-ClashProxyMode clash_get_current_mode();
-clash_mode_operation_result clash_set_mode(ClashProxyMode mode);
 void clash_traffic_start_stream(std::function<void(clash_traffic_info)> callback);
 void clash_traffic_stop_stream();
 bool clash_traffic_is_stream_active();
