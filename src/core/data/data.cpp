@@ -688,6 +688,7 @@ void clash_traffic_start_stream(std::function<void(clash_traffic_info)> callback
         clash_traffic_stop_stream();
     }
 
+    // 将传入的callback，存储到静态变量中
     g_clashTrafficCallback = callback;
 
     if (g_clashTrafficContext)
@@ -701,12 +702,12 @@ void clash_traffic_start_stream(std::function<void(clash_traffic_info)> callback
         {
             return;
         }
-
+        //解析json
         clash_traffic_info info;
         info.up = json.value("up").toVariant().toLongLong();
         info.down = json.value("down").toVariant().toLongLong();
         info.timestamp = json.value("timestamp").toVariant().toLongLong();
-
+        // 调用回调函数
         g_clashTrafficCallback(info);
     });
 

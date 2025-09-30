@@ -13,6 +13,32 @@
       ]
     },
     {
+      "name": "wasm-emscripten",
+      "displayName": "wasm-emscripten",
+      "binaryDir": "${sourceDir}/out/build/wasm-emscripten",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "C:/Qt/6.7.2/wasm_multithread/lib/cmake/Qt6/qt.toolchain.cmake",
+        "QT_CHAINLOAD_TOOLCHAIN_FILE": "G:/dev_programs/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "EMSDK": "G:/dev_programs/emsdk",
+        "Qt6_DIR": "C:/Qt/6.7.2/wasm_multithread/lib/cmake/Qt6",
+        "CMAKE_DEPENDS_USE_COMPILER": false,
+        "CMAKE_C_DEPENDS_USE_COMPILER": false,
+        "CMAKE_CXX_DEPENDS_USE_COMPILER": false
+      },
+      "environment": {
+        "EM_CONFIG": "G:/dev_programs/emsdk/.emscripten",
+        "EMSDK": "G:/dev_programs/emsdk",
+        "EMSDK_NODE": "G:/dev_programs/emsdk/node/22.16.0_64bit/bin/node.exe",
+        "EMSDK_PYTHON": "G:/dev_programs/emsdk/python/3.13.3_64bit/python.exe",
+        "EMSCRIPTEN": "G:/dev_programs/emsdk/upstream/emscripten",
+        "PATH": "G:/dev_programs/emsdk;G:/dev_programs/emsdk/upstream/emscripten;G:/dev_programs/emsdk/upstream/bin;G:/dev_programs/emsdk/node/22.16.0_64bit/bin;$penv{PATH}"
+      },
+      "inherits": [
+        "Qt-Default"
+      ]
+    },
+    {
       "name": "Release-x64",
       "displayName": "Release (x64)",
       "binaryDir": "${sourceDir}/out/build/release",
@@ -54,7 +80,7 @@
   ],
   "vendor": {
     "qt-project.org/Presets": {
-      "checksum": "QZOSbsxuTvQQqllFwUu0G3SfajE="
+      "checksum": "1yIDIrnHHU184ftn6ydfdr86geI="
     }
   }
 }

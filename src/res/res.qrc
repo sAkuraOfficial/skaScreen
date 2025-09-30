@@ -18,4 +18,7 @@
         <file>test/music.jpg</file>
         <file>images/zx.png</file>
     </qresource>
+    <qresource prefix="/fonts">
+        <file alias="yahei.ttf">fonts/yahei.ttf</file>
+    </qresource>
 </RCC>

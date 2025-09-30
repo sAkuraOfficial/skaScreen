@@ -127,7 +127,7 @@ void home::updateCurrentWeather_30min()
         }
         else
         {
-            ui.label_template_show->setText("获取失败");
+            ui.label_template_show->setText("eRror");
         }
     });
 }

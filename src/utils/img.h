@@ -1,6 +1,6 @@
-#include < QPainterPath>
-#include <QPixmap>
 #include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 
 QPixmap getRoundPixmap(const QPixmap &src)
 {
@@ -16,7 +16,6 @@ QPixmap getRoundPixmap(const QPixmap &src)
     painter.drawPixmap(0, 0, src.scaled(size, size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     return dest;
 }
-
 
 QPixmap getRoundPixmap_radius(const QPixmap &src, int radius)
 {
